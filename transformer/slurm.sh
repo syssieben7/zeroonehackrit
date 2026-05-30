@@ -3,9 +3,9 @@
 #SBATCH --reservation=s_tra_ncc
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=1
-#SBATCH --mem=32GB
-#SBATCH --cpus-per-task=8
+#SBATCH --gpus-per-task=2
+#SBATCH --mem=240GB
+#SBATCH --cpus-per-task=16
 #SBATCH --time=01:00:00
 #SBATCH --account=EUHPC_D30_031
 #SBATCH --job-name=zeronehack-train
