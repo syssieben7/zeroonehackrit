@@ -1,0 +1,14 @@
+[project]
+name = "zeroonehackrit-transformer"
+version = "0.1.0"
+description = "ZeroHack Infineon Track - Semiconductor Process Sequence Modelling"
+channels = ["pytorch", "nvidia", "conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+pytorch = { version = "2.4.*", channel = "pytorch" }
+pytorch-cuda = { version = "12.1.*", channel = "pytorch" }
+transformers = ">=4.44,<4.47"
+sentencepiece = ">=0.1.99"
+numpy = "<2"
