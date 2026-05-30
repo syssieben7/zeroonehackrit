@@ -9,6 +9,3 @@ docs/.obsidian/
 data/raw/infineon/IC/IC_variants.csv
 data/raw/infineon/IGBT/IGBT_variants.csv
 data/raw/infineon/MOSFET/MOSFET_variants.csv
-
-# Model checkpoints
-hpc/scp/.save/
