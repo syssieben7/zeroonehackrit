@@ -34,7 +34,7 @@ BATCH_SIZE = 32
 LR = 3e-4
 OUT_DIR = Path("model_out")
 
-DEVICE = "cuda"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 PAD, BOS, EOS = "<pad>", "<bos>", "<eos>"
 
