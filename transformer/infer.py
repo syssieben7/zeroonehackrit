@@ -120,29 +120,28 @@ def predict_next_step(
 def predict_completion(
     model, tokenizer, device,
     family: str, steps: list[str],
+    max_steps: int = 120,
 ) -> list[str]:
-    inp = _input_complete(family, steps)
-    enc = tokenizer(
-        inp,
-        max_length=MAX_INPUT,
-        truncation=True,
-        return_tensors="pt",
-    ).to(device)
+    """
+    Autoregressively predict one step at a time until SHIP LOT or max_steps.
+    Uses the next_step task which the model learned well, rather than trying
+    to generate the full sequence in one shot (which truncation broke at training).
+    """
+    TERMINAL = "SHIP LOT"
+    current = list(steps)
+    generated = []
 
-    with torch.no_grad():
-        output = model.generate(
-            **enc,
-            max_new_tokens=400,
-            num_beams=4,
-            early_stopping=True,
-            no_repeat_ngram_size=4,
-            repetition_penalty=1.5,
-        )
+    for _ in range(max_steps):
+        top = predict_next_step(model, tokenizer, device, family, current, top_k=1)
+        if not top:
+            break
+        next_step = top[0]
+        generated.append(next_step)
+        current.append(next_step)
+        if next_step == TERMINAL:
+            break
 
-    decoded = tokenizer.decode(output[0], skip_special_tokens=True)
-    # split the pipe-separated output back into a list of steps
-    completed_steps = [s.strip().upper() for s in decoded.split("|") if s.strip()]
-    return completed_steps
+    return generated
 
 
 # ---------------------------------------------------------------------------
