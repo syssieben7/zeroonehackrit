@@ -139,6 +139,7 @@ Official accuracy, F1, and AUC pending organizer scoring.
 - Data: 1000 seqs/family; 100 held-out/family, seed=0
 - Run training:   `cd approaches/parallel-gpt && ./sync_run.sh`
 - Run prediction: sync predict.py + predict_job.sh, `sbatch predict_job.sh`
+- Run GPU demo:   sync demo.py + demo_job.sh, `sbatch demo_job.sh` — shows Task 1 side-by-side (n-gram vs GPT top-5), Task 2 full MOSFET completion to SHIP LOT, Task 3 valid 0.725 vs invalid 0.45 (`RULE_TEST_BEFORE_PASSIVATION`) on real eval sequences
 
 ## Status
 - [x] Task 1 in-dist: n-gram Top1=0.756, GPT Top1=0.806 (+5.0 pts)
@@ -146,4 +147,5 @@ Official accuracy, F1, and AUC pending organizer scoring.
 - [x] Task 1 submission: task1_predictions.csv (600 rows)
 - [x] Task 2 submission: task2_predictions.csv (600 rows, mean 41 steps generated)
 - [x] Task 3 submission: task3_predictions.csv (987 rows, 387/987 rule violations detected)
+- [x] GPU demo: Task 1 side-by-side, Task 2 full completion, Task 3 valid=0.725 / invalid=0.45
 - [ ] Official scores — pending organizer evaluation
