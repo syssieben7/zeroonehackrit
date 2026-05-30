@@ -1,7 +1,7 @@
 source .env
 ssh $HPC_USERNAME@login05-ext.leonardo.cineca.it
 
-scp ./hpc/scp/* $HPC_USERNAME@login05-ext.leonardo.cineca.it:/leonardo/home/usertrain/a08trc0y/venv
+scp ./hpc/scp/* $HPC_USERNAME@login05-ext.leonardo.cineca.it:/leonardo/home/usertrain/$HPC_USER/venv
 
 #on leonardo:
 srun run -v slurm.sh
