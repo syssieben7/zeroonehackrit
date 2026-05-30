@@ -9,7 +9,7 @@ Four models for learning and benchmarking semiconductor fab process sequences (n
 | Model | Checkpoint location | Notes |
 |---|---|---|
 | `markov` | `models/markov/markov.json` | We used this as a baseline — transition counts from training data |
-| `lcm` | `models/lcm/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
+| `lcm` | `models/lcm/.save/best_100000_unfinished.pt` | Large Concept Model — bidirectional GRU encoder + GRU decoder with Bahdanau attention |
 | `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
 | `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch |
 
