@@ -181,10 +181,10 @@ AI Factory Austria AI:AT16
 • Use login nodes for large file downloads.
 • Compute nodes do not have internet access.
 • As a workaround, set the following environment variables in your Slurm script:
-export HTTP_PROXY=http://proxyuser:5dd1d2bd00@10.99.0.1:38425
-export HTTPS_PROXY=http://proxyuser:5dd1d2bd00@10.99.0.1:38425
-export http_proxy=http://proxyuser:5dd1d2bd00@10.99.0.1:38425
-export https_proxy=http://proxyuser:5dd1d2bd00@10.99.0.1:38425
+export HTTP_PROXY=http://proxyuser:<PROXY_PASSWORD>@<PROXY_HOST>:<PROXY_PORT>
+export HTTPS_PROXY=http://proxyuser:<PROXY_PASSWORD>@<PROXY_HOST>:<PROXY_PORT>
+export http_proxy=http://proxyuser:<PROXY_PASSWORD>@<PROXY_HOST>:<PROXY_PORT>
+export https_proxy=http://proxyuser:<PROXY_PASSWORD>@<PROXY_HOST>:<PROXY_PORT>
 The proxy will restart every once in a while (due to the 10 min CPU time limit).
 TCP connections will drop shortly.
 Please only use the proxy for low-bandwidth traffic. Always download large
