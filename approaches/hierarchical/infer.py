@@ -56,6 +56,22 @@ def complete(model, vocab, id2tok, prefix: list[str], max_new: int = 200) -> lis
     return generated
 
 
+@torch.no_grad()
+def top_k(model, vocab, id2tok, prefix: list[str], k: int = 5) -> list[str]:
+    """Return the top-k predicted next step tokens (BLK tokens excluded)."""
+    ids = torch.tensor(
+        [[vocab[BOS]] + [vocab.get(t, vocab[PAD]) for t in prefix]],
+        dtype=torch.long, device=DEVICE,
+    )
+    logits = model(ids).logits[0, -1]
+    # zero out BLK and special tokens so they don't appear in predictions
+    for tok, idx in vocab.items():
+        if tok.startswith("[BLK:") or tok in (PAD, BOS, EOS):
+            logits[idx] = float("-inf")
+    top_ids = logits.topk(k).indices.tolist()
+    return [id2tok[i] for i in top_ids]
+
+
 # ── Edit distance + alignment ─────────────────────────────────────────────────
 
 def edit_distance(a: list[str], b: list[str]) -> int:
@@ -194,17 +210,67 @@ def mode_demo():
         compare(prefix, predicted, ground_truth, label=family.upper())
 
 
+def mode_eval_next_step(args):
+    """
+    For every sequence in the CSV, cut at --cut, predict top-5 next steps,
+    check if the true next step is in top-1 / top-3 / top-5.
+    Also computes MRR (mean reciprocal rank).
+    """
+    model, vocab, id2tok = load()
+
+    # read all sequences
+    sequences: dict[str, list[str]] = {}
+    with Path(args.csv).open(newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            sid  = row["SEQUENCE_ID"].strip()
+            step = row["STEP"].strip()
+            sequences.setdefault(sid, []).append(step)
+
+    top1 = top3 = top5 = total = 0
+    rr_sum = 0.0
+    K = 5
+
+    for seq_id, steps in list(sequences.items())[:args.n]:
+        # evaluate at every position from 10% to cut
+        n_steps = len(steps)
+        eval_positions = range(max(1, n_steps // 10), int(n_steps * args.cut))
+        for pos in eval_positions:
+            prefix    = steps[:pos]
+            true_next = steps[pos]
+            preds     = top_k(model, vocab, id2tok, prefix, k=K)
+
+            if true_next in preds:
+                rank = preds.index(true_next) + 1
+                rr_sum += 1.0 / rank
+                top5 += 1
+                if rank <= 3: top3 += 1
+                if rank == 1: top1 += 1
+            total += 1
+
+    print(f"\nNext-step prediction — {args.csv}")
+    print(f"  sequences : {min(args.n, len(sequences))}  |  eval positions: {total}")
+    print(f"  cut point : {args.cut:.0%} of each sequence")
+    print(f"  Top-1 acc : {top1}/{total} = {top1/total:.1%}")
+    print(f"  Top-3 acc : {top3}/{total} = {top3/total:.1%}")
+    print(f"  Top-5 acc : {top5}/{total} = {top5/total:.1%}")
+    print(f"  MRR       : {rr_sum/total:.4f}")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("prefix",   nargs="?",  help="Pipe-separated steps for completion")
-    parser.add_argument("--csv",    default=None, help="Path to variants CSV")
-    parser.add_argument("--seq",    default="seq_0001", help="Sequence ID (default: seq_0001)")
-    parser.add_argument("--cut",    type=float, default=0.6, help="Prefix fraction 0–1 (default: 0.6)")
+    parser.add_argument("prefix",         nargs="?",       help="Pipe-separated steps for completion")
+    parser.add_argument("--csv",          default=None,    help="Path to variants CSV")
+    parser.add_argument("--seq",          default="seq_0001", help="Sequence ID (default: seq_0001)")
+    parser.add_argument("--cut",          type=float, default=0.6, help="Prefix fraction 0–1 (default: 0.6)")
+    parser.add_argument("--eval-next-step", action="store_true", help="Run top-1/3/5 next-step accuracy eval")
+    parser.add_argument("--n",            type=int, default=200, help="Max sequences to eval (default: 200)")
     args = parser.parse_args()
 
-    if args.csv:
+    if args.eval_next_step and args.csv:
+        mode_eval_next_step(args)
+    elif args.csv:
         mode_csv(args)
     elif args.prefix:
         mode_prefix(args.prefix)
