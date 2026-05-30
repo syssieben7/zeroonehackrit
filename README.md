@@ -70,7 +70,7 @@ python data/participant_files/eval_metrics.py \
 | Model | Checkpoint location | Notes |
 |---|---|---|
 | `markov` | `models/markov/markov.json` | No training needed — transition counts from training data |
-| `seq2seq` | `models/seq2seq/.save/best.pt` | GRU encoder-decoder with Bahdanau attention |
+| `seq2seq` | `models/seq2seq/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
 | `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
 | `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch (train first) |
 

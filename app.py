@@ -14,10 +14,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "models"))
 
 import gradio as gr
+
 from models.infer import (
     available_models,
-    missing_models,
     load_model,
+    missing_models,
     run_task1,
     run_task2,
     run_task3,
@@ -30,9 +31,9 @@ from models.seq2seq.validator import validate_sequence
 # Paths
 # ---------------------------------------------------------------------------
 
-_ROOT          = Path(__file__).parent
-_EVAL_VALID    = _ROOT / "data" / "participant_files" / "eval_input_valid.csv"
-_EVAL_ANOMALY  = _ROOT / "data" / "participant_files" / "eval_input_anomaly.csv"
+_ROOT = Path(__file__).parent
+_EVAL_VALID = _ROOT / "data" / "participant_files" / "eval_input_valid.csv"
+_EVAL_ANOMALY = _ROOT / "data" / "participant_files" / "eval_input_anomaly.csv"
 
 # ---------------------------------------------------------------------------
 # Model cache
@@ -50,6 +51,7 @@ def _get_model(name: str):
 # ---------------------------------------------------------------------------
 # Input parsing
 # ---------------------------------------------------------------------------
+
 
 def _parse_input(text: str) -> list[str]:
     lines = text.strip().splitlines()
@@ -87,6 +89,7 @@ def _handle_upload(file) -> str:
 # Interactive tab handlers
 # ---------------------------------------------------------------------------
 
+
 def predict_next(input_text: str, model_name: str) -> tuple[str, str]:
     if not input_text.strip():
         return "No input provided.", ""
@@ -97,7 +100,7 @@ def predict_next(input_text: str, model_name: str) -> tuple[str, str]:
         return "Could not parse any steps.", ""
 
     model = _get_model(model_name)
-    top5  = model.predict_next(steps, top_k=10)
+    top5 = model.predict_next(steps, top_k=10)
 
     lines = [
         f"Model   : {model_name}",
@@ -122,7 +125,7 @@ def predict_completion(input_text: str, model_name: str) -> tuple[str, str, str]
     if not steps:
         return "Could not parse any steps.", "", ""
 
-    model      = _get_model(model_name)
+    model = _get_model(model_name)
     completion = model.predict_completion(steps)
 
     lines = [
@@ -138,7 +141,7 @@ def predict_completion(input_text: str, model_name: str) -> tuple[str, str, str]
     if not completion:
         lines.append("  (no completion produced)")
 
-    in_viols  = _fmt_violations(validate_sequence(steps))
+    in_viols = _fmt_violations(validate_sequence(steps))
     out_viols = _fmt_violations(validate_sequence(steps + completion))
     return "\n".join(lines), in_viols, out_viols
 
@@ -152,11 +155,11 @@ def detect_anomaly_interactive(input_text: str, model_name: str) -> tuple[str, s
     if not steps:
         return "Could not parse any steps.", ""
 
-    model    = _get_model(model_name)
+    model = _get_model(model_name)
     is_valid, score, rule = model.detect_anomaly(steps)
 
     verdict = "VALID" if is_valid else "INVALID"
-    lines   = [
+    lines = [
         f"Model   : {model_name}",
         f"Steps   : {len(steps)}",
         f"Verdict : {verdict}",
@@ -172,6 +175,7 @@ def detect_anomaly_interactive(input_text: str, model_name: str) -> tuple[str, s
 # ---------------------------------------------------------------------------
 # Benchmark tab handlers
 # ---------------------------------------------------------------------------
+
 
 def _check_eval_files() -> tuple[bool, bool]:
     return _EVAL_VALID.exists(), _EVAL_ANOMALY.exists()
@@ -221,16 +225,20 @@ def run_self_benchmark(model_name: str, task: str, n_seqs: int) -> tuple[str, st
         log.append(f"  {done}/{total} sequences processed...")
 
     if "Task 1" in task:
-        scores, pred_csv = self_benchmark_task1(model, progress_cb=progress,
-                                                max_per_family=n_seqs)
+        scores, pred_csv = self_benchmark_task1(
+            model, progress_cb=progress, max_per_family=n_seqs
+        )
     elif "Task 2" in task:
-        scores, pred_csv = self_benchmark_task2(model, progress_cb=progress,
-                                                max_per_family=n_seqs)
+        scores, pred_csv = self_benchmark_task2(
+            model, progress_cb=progress, max_per_family=n_seqs
+        )
     else:
-        return "Self-benchmark not available for Task 3 (uses rule-checker by definition).", ""
+        return (
+            "Self-benchmark not available for Task 3 (uses rule-checker by definition).",
+            "",
+        )
 
     return scores + "\n\n" + "\n".join(log), pred_csv
-
 
 
 def save_predictions(pred_csv: str, task: str) -> str:
@@ -247,24 +255,31 @@ def save_predictions(pred_csv: str, task: str) -> str:
 # Build Gradio app
 # ---------------------------------------------------------------------------
 
+
 def build_app():
     models = available_models()
     default = models[0] if models else None
 
     if not models:
-        print("[WARNING] No trained model checkpoints found. "
-              "Train models first or place checkpoints in the expected paths.")
+        print(
+            "[WARNING] No trained model checkpoints found. "
+            "Train models first or place checkpoints in the expected paths."
+        )
 
     valid_ok, anomaly_ok = _check_eval_files()
     eval_status = []
     if valid_ok:
         eval_status.append(f"eval_input_valid.csv found ({_EVAL_VALID})")
     else:
-        eval_status.append(f"eval_input_valid.csv NOT FOUND (expected at {_EVAL_VALID})")
+        eval_status.append(
+            f"eval_input_valid.csv NOT FOUND (expected at {_EVAL_VALID})"
+        )
     if anomaly_ok:
         eval_status.append(f"eval_input_anomaly.csv found ({_EVAL_ANOMALY})")
     else:
-        eval_status.append(f"eval_input_anomaly.csv NOT FOUND (expected at {_EVAL_ANOMALY})")
+        eval_status.append(
+            f"eval_input_anomaly.csv NOT FOUND (expected at {_EVAL_ANOMALY})"
+        )
 
     with gr.Blocks(title="Process Sequence Predictor") as app:
         gr.Markdown("# Semiconductor Process Sequence Predictor")
@@ -275,9 +290,15 @@ def build_app():
                 f"`{n}` (expected `{p}`)" for n, p in missing.items()
             )
         gr.Markdown(
-            "**Models available:** " + (", ".join(f"`{m}`" for m in models) if models else "_none — train first_") +
-            missing_note +
-            "\n\n**Eval files:** " + " | ".join(eval_status)
+            "**Models available:** "
+            + (
+                ", ".join(f"`{m}`" for m in models)
+                if models
+                else "_none — train first_"
+            )
+            + missing_note
+            + "\n\n**Eval files:** "
+            + " | ".join(eval_status)
         )
 
         # ── Tab 1: Self-Benchmark ────────────────────────────────────────────
@@ -297,23 +318,35 @@ def build_app():
             )
             with gr.Row():
                 self_task_dd = gr.Dropdown(
-                    choices=["Task 1 — Next-Step Prediction",
-                             "Task 2 — Sequence Completion"],
+                    choices=[
+                        "Task 1 — Next-Step Prediction",
+                        "Task 2 — Sequence Completion",
+                    ],
                     value="Task 1 — Next-Step Prediction",
-                    label="Task", scale=2,
+                    label="Task",
+                    scale=2,
                 )
                 self_model_dd = gr.Dropdown(
-                    choices=models, value=default, label="Model", scale=1,
+                    choices=models,
+                    value=default,
+                    label="Model",
+                    scale=1,
                 )
             with gr.Row():
                 n_seqs_slider = gr.Slider(
-                    minimum=5, maximum=100, value=50, step=5,
+                    minimum=5,
+                    maximum=100,
+                    value=50,
+                    step=5,
                     label="Sequences per family  (Task 1: 50 · Task 2: 15 recommended)",
                     scale=3,
                 )
                 self_run_btn = gr.Button("Run", variant="primary", scale=1)
             self_scores_box = gr.Textbox(
-                label="Results", lines=20, max_lines=40, interactive=False,
+                label="Results",
+                lines=20,
+                max_lines=40,
+                interactive=False,
             )
             with gr.Row():
                 self_pred_state = gr.State("")
@@ -349,14 +382,21 @@ def build_app():
                         "Task 3 — Anomaly Detection",
                     ],
                     value="Task 1 — Next-Step Prediction",
-                    label="Task", scale=2,
+                    label="Task",
+                    scale=2,
                 )
                 bench_model_dd = gr.Dropdown(
-                    choices=models, value=default, label="Model", scale=1,
+                    choices=models,
+                    value=default,
+                    label="Model",
+                    scale=1,
                 )
                 run_btn = gr.Button("Run", variant="primary", scale=1)
             scores_box = gr.Textbox(
-                label="Results", lines=20, max_lines=40, interactive=False,
+                label="Results",
+                lines=20,
+                max_lines=40,
+                interactive=False,
             )
             with gr.Row():
                 pred_state = gr.State("")
@@ -384,38 +424,57 @@ def build_app():
                             "RECEIVE WAFER LOT\nLOT IDENTIFICATION\n...\n\n"
                             "Or paste CSV (SEQUENCE_ID,STEP)"
                         ),
-                        lines=18, max_lines=40,
+                        lines=18,
+                        max_lines=40,
                     )
-                    file_up = gr.File(label="Upload CSV", file_types=[".csv", ".txt"],
-                                      type="filepath")
-                    input_viols = gr.Textbox(label="Input Validation", lines=3,
-                                             interactive=False)
+                    file_up = gr.File(
+                        label="Upload CSV", file_types=[".csv", ".txt"], type="filepath"
+                    )
+                    input_viols = gr.Textbox(
+                        label="Input Validation", lines=3, interactive=False
+                    )
 
                 with gr.Column(scale=1, min_width=180):
                     gr.Markdown("### Actions")
                     custom_model_dd = gr.Dropdown(
-                        choices=models, value=default, label="Model",
+                        choices=models,
+                        value=default,
+                        label="Model",
                     )
-                    btn_next  = gr.Button("Predict Next Step", variant="primary",  size="lg")
-                    btn_end   = gr.Button("Predict Until End", variant="primary",  size="lg")
-                    btn_anom  = gr.Button("Detect Anomaly",    variant="secondary", size="lg")
+                    btn_next = gr.Button(
+                        "Predict Next Step", variant="primary", size="lg"
+                    )
+                    btn_end = gr.Button(
+                        "Predict Until End", variant="primary", size="lg"
+                    )
+                    btn_anom = gr.Button(
+                        "Detect Anomaly", variant="secondary", size="lg"
+                    )
 
                 with gr.Column(scale=4):
-                    output_box   = gr.Textbox(label="Output", lines=18, max_lines=40,
-                                              interactive=False)
-                    output_viols = gr.Textbox(label="Output Validation", lines=3,
-                                              interactive=False)
+                    output_box = gr.Textbox(
+                        label="Output", lines=18, max_lines=40, interactive=False
+                    )
+                    output_viols = gr.Textbox(
+                        label="Output Validation", lines=3, interactive=False
+                    )
 
             file_up.change(fn=_handle_upload, inputs=[file_up], outputs=[input_box])
-            btn_next.click(fn=predict_next,
-                           inputs=[input_box, custom_model_dd],
-                           outputs=[output_box, input_viols])
-            btn_end.click(fn=predict_completion,
-                          inputs=[input_box, custom_model_dd],
-                          outputs=[output_box, input_viols, output_viols])
-            btn_anom.click(fn=detect_anomaly_interactive,
-                           inputs=[input_box, custom_model_dd],
-                           outputs=[output_box, input_viols])
+            btn_next.click(
+                fn=predict_next,
+                inputs=[input_box, custom_model_dd],
+                outputs=[output_box, input_viols],
+            )
+            btn_end.click(
+                fn=predict_completion,
+                inputs=[input_box, custom_model_dd],
+                outputs=[output_box, input_viols, output_viols],
+            )
+            btn_anom.click(
+                fn=detect_anomaly_interactive,
+                inputs=[input_box, custom_model_dd],
+                outputs=[output_box, input_viols],
+            )
 
     return app
 

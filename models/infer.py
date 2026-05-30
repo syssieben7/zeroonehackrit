@@ -199,11 +199,15 @@ class HierarchicalAdapter(ModelInterface):
         eos_id = self._vocab[self._EOS]
         ids = self._ids(prefix)
         result = []
+        _skip = {self._vocab[t] for t in (self._PAD, self._BOS, self._EOS)}
         with torch.no_grad():
             for _ in range(max_steps):
                 # slide the window if we hit the context limit
                 x = torch.tensor([ids[-self._max_len:]], dtype=torch.long, device=self._dev)
-                nxt = int(self._model(x).logits[0, -1].argmax())
+                logits = self._model(x).logits[0, -1]
+                for idx in _skip:
+                    logits[idx] = float("-inf")
+                nxt = int(logits.argmax())
                 if nxt == eos_id:
                     break
                 tok = self._id2tok[nxt]
@@ -337,7 +341,7 @@ class TransformerAdapter(ModelInterface):
 
 _DEFAULT_PATHS = {
     "markov":       _MARKOV_DIR / "markov.json",
-    "seq2seq":      _SEQ2SEQ / ".save" / "best.pt",
+    "seq2seq":      _SEQ2SEQ / ".save" / "best_100000_unfinished.pt",
     "hierarchical": _HIER_DIR / "model_out",
     "transformer":  _TRANS_DIR / "gpt_ckpt.pt",
 }
