@@ -20,14 +20,18 @@ import json
 from pathlib import Path
 
 import torch
-from torch.utils.data import Dataset, DataLoader
-from transformers import T5ForConditionalGeneration, T5Tokenizer, get_linear_schedule_with_warmup
 from torch.optim import AdamW
-
+from torch.utils.data import DataLoader, Dataset
+from transformers import (
+    T5ForConditionalGeneration,
+    T5Tokenizer,
+    get_linear_schedule_with_warmup,
+)
 
 # ---------------------------------------------------------------------------
 # Dataset
 # ---------------------------------------------------------------------------
+
 
 class SequenceDataset(Dataset):
     def __init__(self, path: Path, tokenizer, max_input_len: int, max_output_len: int):
@@ -64,9 +68,9 @@ class SequenceDataset(Dataset):
         labels[labels == self.tokenizer.pad_token_id] = -100
 
         return {
-            "input_ids":      enc.input_ids.squeeze(),
+            "input_ids": enc.input_ids.squeeze(),
             "attention_mask": enc.attention_mask.squeeze(),
-            "labels":         labels,
+            "labels": labels,
         }
 
 
@@ -74,14 +78,15 @@ class SequenceDataset(Dataset):
 # Evaluation
 # ---------------------------------------------------------------------------
 
+
 def evaluate(model, loader, device, tokenizer, max_output_len):
     model.eval()
     total, correct = 0, 0
     with torch.no_grad():
         for batch in loader:
-            input_ids      = batch["input_ids"].to(device)
+            input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels         = batch["labels"].to(device)
+            labels = batch["labels"].to(device)
 
             generated = model.generate(
                 input_ids=input_ids,
@@ -89,10 +94,10 @@ def evaluate(model, loader, device, tokenizer, max_output_len):
                 max_new_tokens=max_output_len,
             )
             # decode predictions and targets
-            preds   = tokenizer.batch_decode(generated, skip_special_tokens=True)
+            preds = tokenizer.batch_decode(generated, skip_special_tokens=True)
             targets = labels.clone()
             targets[targets == -100] = tokenizer.pad_token_id
-            refs    = tokenizer.batch_decode(targets, skip_special_tokens=True)
+            refs = tokenizer.batch_decode(targets, skip_special_tokens=True)
 
             for pred, ref in zip(preds, refs):
                 total += 1
@@ -107,20 +112,29 @@ def evaluate(model, loader, device, tokenizer, max_output_len):
 # Training loop
 # ---------------------------------------------------------------------------
 
+
 def train(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
     print(f"Device: {device}")
     print(f"Model:  {args.model}")
 
     tokenizer = T5Tokenizer.from_pretrained(args.model)
-    model     = T5ForConditionalGeneration.from_pretrained(args.model).to(device)
+    model = T5ForConditionalGeneration.from_pretrained(args.model).to(device)
 
     data_dir = Path(args.data_dir)
-    train_ds = SequenceDataset(data_dir / "train.jsonl", tokenizer, args.max_input_len, args.max_output_len)
-    val_ds   = SequenceDataset(data_dir / "val.jsonl",   tokenizer, args.max_input_len, args.max_output_len)
+    train_ds = SequenceDataset(
+        data_dir / "train.jsonl", tokenizer, args.max_input_len, args.max_output_len
+    )
+    val_ds = SequenceDataset(
+        data_dir / "val.jsonl", tokenizer, args.max_input_len, args.max_output_len
+    )
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,  num_workers=args.workers)
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
+    train_loader = DataLoader(
+        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.workers
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.workers
+    )
 
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     total_steps = len(train_loader) * args.epochs
@@ -138,11 +152,13 @@ def train(args):
         model.train()
         total_loss = 0.0
         for step, batch in enumerate(train_loader, 1):
-            input_ids      = batch["input_ids"].to(device)
+            input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels         = batch["labels"].to(device)
+            labels = batch["labels"].to(device)
 
-            loss = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels).loss
+            loss = model(
+                input_ids=input_ids, attention_mask=attention_mask, labels=labels
+            ).loss
             loss.backward()
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -153,11 +169,15 @@ def train(args):
             total_loss += loss.item()
             if step % args.log_every == 0:
                 avg = total_loss / step
-                print(f"  Epoch {epoch} | step {step}/{len(train_loader)} | loss {avg:.4f}")
+                print(
+                    f"  Epoch {epoch} | step {step}/{len(train_loader)} | loss {avg:.4f}"
+                )
 
         val_acc = evaluate(model, val_loader, device, tokenizer, args.max_output_len)
         avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch} done — loss {avg_loss:.4f} | val exact-match {val_acc:.3%}")
+        print(
+            f"Epoch {epoch} done — loss {avg_loss:.4f} | val exact-match {val_acc:.3%}"
+        )
 
         if val_acc > best_acc:
             best_acc = val_acc
@@ -173,21 +193,31 @@ def train(args):
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model",          default="t5-small",
-                        help="HuggingFace model name or local path")
-    parser.add_argument("--data_dir",       default="./data")
-    parser.add_argument("--out_dir",        default="./checkpoints")
-    parser.add_argument("--epochs",         type=int,   default=3)
-    parser.add_argument("--batch_size",     type=int,   default=16)
-    parser.add_argument("--lr",             type=float, default=5e-4)
-    parser.add_argument("--max_input_len",  type=int,   default=256,
-                        help="Max tokens for input sequence prefix")
-    parser.add_argument("--max_output_len", type=int,   default=128,
-                        help="Max tokens for output (next step or completion)")
-    parser.add_argument("--log_every",      type=int,   default=100)
-    parser.add_argument("--workers",        type=int,   default=2)
+    parser.add_argument(
+        "--model", default="t5-small", help="HuggingFace model name or local path"
+    )
+    parser.add_argument("--data_dir", default="./data")
+    parser.add_argument("--out_dir", default="./checkpoints")
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument(
+        "--max_input_len",
+        type=int,
+        default=256,
+        help="Max tokens for input sequence prefix",
+    )
+    parser.add_argument(
+        "--max_output_len",
+        type=int,
+        default=128,
+        help="Max tokens for output (next step or completion)",
+    )
+    parser.add_argument("--log_every", type=int, default=100)
+    parser.add_argument("--workers", type=int, default=2)
     args = parser.parse_args()
     train(args)
 
