@@ -15,9 +15,11 @@
 cd $HOME/zeroonehackrit/transformer
 
 pixi run python train.py \
-    --model t5-small \
+    --model google/flan-t5-base \
     --data_dir $HOME/zeroonehackrit/data/processed/transformer \
     --out_dir $HOME/zeroonehackrit/checkpoints \
     --epochs 3 \
-    --batch_size 32 \
+    --batch_size 16 \
+    --max_input_len 512 \
+    --max_output_len 512 \
     --workers 4
