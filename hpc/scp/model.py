@@ -79,10 +79,13 @@ class Decoder(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, tie_embeddings=True):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
+        if tie_embeddings:
+            # Tie encoder and decoder input embeddings (shared vocabulary)
+            self.decoder.embed.weight = self.encoder.embed.weight
 
     def forward(self, src, trg=None, max_len=50, sos=2,
                 teacher_forcing_ratio=0.5):
