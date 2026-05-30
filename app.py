@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'hpc', 'scp'))
 import gradio as gr
 import torch
 from model import Encoder, Decoder, Seq2Seq
+from lcm_model import ProcessLCM
 from utils import PAD, SOS, EOS, IGBT_TOK, IC_TOK, Vocab
 from validator import validate_sequence
 from markov import MarkovChain
@@ -71,13 +72,29 @@ def load_model(ckpt_name):
     vocab.stoi = ckpt['vocab_stoi']
 
     vocab_size = len(vocab)
-    encoder = Encoder(vocab_size, args['embed_size'], args['hidden_size'],
-                      n_layers=2, dropout=0.0)
-    decoder = Decoder(args['embed_size'], args['hidden_size'], vocab_size,
-                      n_layers=args.get('dec_layers', 1), dropout=0.0)
-    model = Seq2Seq(encoder, decoder, tie_embeddings=True).to(DEVICE)
-    model.load_state_dict(ckpt['model_state'])
-    model.eval()
+
+    # Detect model type: LCM has 'embed_dim', Seq2Seq has 'embed_size'
+    if 'embed_dim' in args:
+        # Process-LCM checkpoint
+        model = ProcessLCM(
+            vocab_size=vocab_size,
+            embed_dim=args['embed_dim'],
+            n_heads=args['n_heads'],
+            n_layers=args['n_layers'],
+            dim_feedforward=args['dim_feedforward'],
+            dropout=0.0,
+        ).to(DEVICE)
+        model.load_state_dict(ckpt['model_state'])
+        model.eval()
+    else:
+        # Seq2Seq checkpoint
+        encoder = Encoder(vocab_size, args['embed_size'], args['hidden_size'],
+                          n_layers=2, dropout=0.0)
+        decoder = Decoder(args['embed_size'], args['hidden_size'], vocab_size,
+                          n_layers=args.get('dec_layers', 1), dropout=0.0)
+        model = Seq2Seq(encoder, decoder, tie_embeddings=True).to(DEVICE)
+        model.load_state_dict(ckpt['model_state'])
+        model.eval()
 
     _loaded_model = model
     _loaded_vocab = vocab
@@ -175,29 +192,49 @@ def predict_next_step(input_text, checkpoint):
         input_violations = validate_sequence(steps)
         return '\n'.join(lines), format_violations(input_violations)
 
-    # --- Seq2Seq path ---
+    # --- Seq2Seq / LCM path ---
     model, vocab = load_model(checkpoint)
     family = detect_family(steps)
-    src = encode_prefix(steps, family, vocab).unsqueeze(1).to(DEVICE)
+    src = encode_prefix(steps, family, vocab)
 
-    with torch.no_grad():
-        encoder_output, encoder_hidden = model.encoder(src)
-        hidden = model.decoder.init_hidden(encoder_hidden)
-        sos_input = torch.tensor([SOS], device=DEVICE)
-        output, _, _ = model.decoder(sos_input, hidden, encoder_output)
-        probs = output.exp().squeeze(0)
-        top_probs, top_indices = probs.topk(10)
+    if isinstance(model, ProcessLCM):
+        # LCM: predict next step via cosine similarity in embedding space
+        src_batch = src.unsqueeze(0).to(DEVICE)  # (1, seq_len)
+        top_indices, top_scores = model.predict_next_step(src_batch, top_k=10)
+        top_indices = top_indices[0].tolist()
+        top_scores = top_scores[0].tolist()
 
-    lines = [f"Model: Seq2Seq ({checkpoint})",
-             f"Family detected: {family.upper()}",
-             f"Prefix length: {len(steps)} steps",
-             f"Last step: {steps[-1]}",
-             "", "─── Top-10 Next Step Predictions ───", ""]
-    for rank, (prob, idx) in enumerate(zip(top_probs.tolist(), top_indices.tolist()), 1):
-        token = vocab.itos[idx]
-        if idx >= 6:
-            bar = '█' * int(prob * 40)
-            lines.append(f"  {rank:2d}. {token:45s} {prob:.4f} {bar}")
+        lines = [f"Model: Process-LCM ({checkpoint})",
+                 f"Family detected: {family.upper()}",
+                 f"Prefix length: {len(steps)} steps",
+                 f"Last step: {steps[-1]}",
+                 "", "─── Top-10 Next Step Predictions ───", ""]
+        for rank, (idx, score) in enumerate(zip(top_indices, top_scores), 1):
+            token = vocab.itos[idx]
+            if idx >= 6:
+                bar = '█' * int(max(0, score) * 20)
+                lines.append(f"  {rank:2d}. {token:45s} {score:.4f} {bar}")
+    else:
+        # Seq2Seq
+        src = src.unsqueeze(1).to(DEVICE)
+        with torch.no_grad():
+            encoder_output, encoder_hidden = model.encoder(src)
+            hidden = model.decoder.init_hidden(encoder_hidden)
+            sos_input = torch.tensor([SOS], device=DEVICE)
+            output, _, _ = model.decoder(sos_input, hidden, encoder_output)
+            probs = output.exp().squeeze(0)
+            top_probs, top_indices = probs.topk(10)
+
+        lines = [f"Model: Seq2Seq ({checkpoint})",
+                 f"Family detected: {family.upper()}",
+                 f"Prefix length: {len(steps)} steps",
+                 f"Last step: {steps[-1]}",
+                 "", "─── Top-10 Next Step Predictions ───", ""]
+        for rank, (prob, idx) in enumerate(zip(top_probs.tolist(), top_indices.tolist()), 1):
+            token = vocab.itos[idx]
+            if idx >= 6:
+                bar = '█' * int(prob * 40)
+                lines.append(f"  {rank:2d}. {token:45s} {prob:.4f} {bar}")
 
     # Input validation
     input_violations = validate_sequence(steps)
@@ -233,25 +270,33 @@ def predict_until_end(input_text, checkpoint):
         output_violations = validate_sequence(full_seq)
         return '\n'.join(lines), format_violations(input_violations), format_violations(output_violations)
 
-    # --- Seq2Seq path ---
+    # --- Seq2Seq / LCM path ---
     model, vocab = load_model(checkpoint)
     family = detect_family(steps)
-    src = encode_prefix(steps, family, vocab).unsqueeze(1).to(DEVICE)
+    src = encode_prefix(steps, family, vocab)
 
-    with torch.no_grad():
-        encoder_output, encoder_hidden = model.encoder(src)
-        hidden = model.decoder.init_hidden(encoder_hidden)
-        input_tok = torch.tensor([SOS], device=DEVICE)
-        completion = []
-        for _ in range(200):
-            output, hidden, _ = model.decoder(input_tok, hidden, encoder_output)
-            top1 = output.argmax(1)
-            tok_idx = top1.item()
-            if tok_idx == EOS:
-                break
-            if tok_idx >= 6:
-                completion.append(vocab.itos[tok_idx])
-            input_tok = top1
+    if isinstance(model, ProcessLCM):
+        # LCM: autoregressive completion via cosine nearest-neighbor
+        src_batch = src.unsqueeze(0).to(DEVICE)
+        predicted_ids = model.complete_sequence(src_batch, max_len=200, eos_idx=EOS)
+        completion = [vocab.itos[idx] for idx in predicted_ids if idx < len(vocab.itos)]
+    else:
+        # Seq2Seq
+        src = src.unsqueeze(1).to(DEVICE)
+        with torch.no_grad():
+            encoder_output, encoder_hidden = model.encoder(src)
+            hidden = model.decoder.init_hidden(encoder_hidden)
+            input_tok = torch.tensor([SOS], device=DEVICE)
+            completion = []
+            for _ in range(200):
+                output, hidden, _ = model.decoder(input_tok, hidden, encoder_output)
+                top1 = output.argmax(1)
+                tok_idx = top1.item()
+                if tok_idx == EOS:
+                    break
+                if tok_idx >= 6:
+                    completion.append(vocab.itos[tok_idx])
+                input_tok = top1
 
     lines = [f"Family detected: {family.upper()}",
              f"Prefix length: {len(steps)} steps",
