@@ -15,7 +15,7 @@
 cd $HOME/zeroonehackrit/transformer
 
 pixi run python train.py \
-    --model google/flan-t5-base \
+    --model $HOME/zeroonehackrit/models/models--google--flan-t5-base/snapshots/7bcac572ce56db69c1ea7c8af255c5d7c9672fc2 \
     --data_dir $HOME/zeroonehackrit/data/processed/transformer \
     --out_dir $HOME/zeroonehackrit/checkpoints \
     --epochs 3 \
