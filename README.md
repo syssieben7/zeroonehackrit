@@ -8,18 +8,19 @@ Four models for learning and benchmarking semiconductor fab process sequences (n
 
 | Model | Checkpoint location | Notes |
 |---|---|---|
-| `markov` | `models/markov/markov.json` | No training needed — transition counts from training data |
+| `markov` | `models/markov/markov.json` | We used this as a baseline — transition counts from training data |
 | `seq2seq` | `models/seq2seq/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
 | `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
 | `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch |
 
+Each model has its strengths and weaknesses
 ---
 
 ## Quick Start
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate      # fish: source .venv/bin/activate.fish
+source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 # → open http://127.0.0.1:7860
@@ -39,7 +40,7 @@ The app has three tabs:
 
 ## I don't like GUIs...
 
-Everything works from the terminal. Run from the repo root with `python -m models.infer`.
+Everything works from the terminal. Source into your virtual environment and run the following:
 
 **Generate submission CSVs:**
 ```bash
