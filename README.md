@@ -4,6 +4,15 @@ Four models for learning and benchmarking semiconductor fab process sequences (n
 
 **Models:** `markov` · `seq2seq` · `hierarchical` · `transformer`
 
+## Model checkpoints
+
+| Model | Checkpoint location | Notes |
+|---|---|---|
+| `markov` | `models/markov/markov.json` | No training needed — transition counts from training data |
+| `seq2seq` | `models/seq2seq/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
+| `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
+| `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch |
+
 ---
 
 ## Quick Start
@@ -30,42 +39,31 @@ The app has three tabs:
 
 ## I don't like GUIs...
 
-`models/infer.py` is fully usable as a library. Run from the repo root:
+Everything works from the terminal. Run from the repo root with `python -m models.infer`.
 
-```python
-from models.infer import load_model, run_task1, run_task2, run_task3
-from pathlib import Path
-
-model = load_model("seq2seq")  # markov | hierarchical | transformer
-
-VALID   = Path("data/participant_files/eval_input_valid.csv")
-ANOMALY = Path("data/participant_files/eval_input_anomaly.csv")
-
-pred1, _ = run_task1(model, VALID)
-pred2, _ = run_task2(model, VALID)
-pred3, _ = run_task3(model, ANOMALY)
-
-Path("task1_predictions.csv").write_text(pred1)
-Path("task2_predictions.csv").write_text(pred2)
-Path("task3_predictions.csv").write_text(pred3)
+**Generate submission CSVs:**
+```bash
+python -m models.infer --model seq2seq --task 1 --output task1_predictions.csv
+python -m models.infer --model seq2seq --task 2 --output task2_predictions.csv
+python -m models.infer --model seq2seq --task 3 --output task3_predictions.csv
 ```
 
-Score Task 3 locally (Tasks 1 & 2 need the organiser's ground-truth file):
+**Self-benchmark (scored locally against extended CSVs):**
+```bash
+python -m models.infer --model hierarchical --task self1
+python -m models.infer --model hierarchical --task self2 --n-seqs 15
+```
 
+**Single sequence:**
+```bash
+python -m models.infer --model markov --next "RECEIVE WAFER LOT|LOT IDENTIFICATION|INITIAL WAFER INSPECTION"
+python -m models.infer --model seq2seq --complete "RECEIVE WAFER LOT|LOT IDENTIFICATION"
+```
+
+**Score Task 3 locally** (Tasks 1 & 2 need the organiser's ground-truth file):
 ```bash
 python data/participant_files/eval_metrics.py \
     --task anomaly \
     --ground-truth data/participant_files/eval_input_anomaly.csv \
     --predictions task3_predictions.csv
 ```
-
----
-
-## Model checkpoints
-
-| Model | Checkpoint location | Notes |
-|---|---|---|
-| `markov` | `models/markov/markov.json` | No training needed — transition counts from training data |
-| `seq2seq` | `models/seq2seq/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
-| `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
-| `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch |

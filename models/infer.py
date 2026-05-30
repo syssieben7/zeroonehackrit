@@ -921,3 +921,101 @@ def self_benchmark_task2(model: ModelInterface,
             f"TokAcc:{mean(d['tacc']):.3f}  BlkAcc:{mean(d['bacc']):.3f}"
         )
     return "\n".join(lines), pred_rows_csv
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run inference or benchmark tasks from the command line.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+examples:
+  # generate submission CSVs for all three tasks
+  python -m models.infer --model seq2seq --task 1 --output task1_predictions.csv
+  python -m models.infer --model seq2seq --task 2 --output task2_predictions.csv
+  python -m models.infer --model seq2seq --task 3 --output task3_predictions.csv
+
+  # self-benchmark (scored locally against extended CSVs)
+  python -m models.infer --model hierarchical --task self1
+  python -m models.infer --model hierarchical --task self2 --n-seqs 15
+
+  # single sequence: predict next step
+  python -m models.infer --model markov --next "RECEIVE WAFER LOT|LOT IDENTIFICATION|INITIAL WAFER INSPECTION"
+
+  # single sequence: complete until end
+  python -m models.infer --model markov --complete "RECEIVE WAFER LOT|LOT IDENTIFICATION"
+        """,
+    )
+    parser.add_argument("--model", required=True,
+                        choices=["markov", "seq2seq", "hierarchical", "transformer"],
+                        help="Model to use")
+    parser.add_argument("--task", choices=["1", "2", "3", "self1", "self2"],
+                        help="Task to run (1=next-step, 2=completion, 3=anomaly, self1/self2=self-benchmark)")
+    parser.add_argument("--valid",
+                        default=str(_ROOT / "data" / "participant_files" / "eval_input_valid.csv"),
+                        metavar="CSV", help="Path to eval_input_valid.csv (tasks 1 & 2)")
+    parser.add_argument("--anomaly",
+                        default=str(_ROOT / "data" / "participant_files" / "eval_input_anomaly.csv"),
+                        metavar="CSV", help="Path to eval_input_anomaly.csv (task 3)")
+    parser.add_argument("--output", metavar="CSV",
+                        help="Where to write prediction CSV (default: print scores only)")
+    parser.add_argument("--n-seqs", type=int, default=50, metavar="N",
+                        help="Sequences per family for self-benchmark (default: 50)")
+    parser.add_argument("--next", metavar="STEPS",
+                        help="Pipe-separated prefix for next-step prediction")
+    parser.add_argument("--complete", metavar="STEPS",
+                        help="Pipe-separated prefix for sequence completion")
+
+    args = parser.parse_args()
+
+    model = load_model(args.model)
+
+    # ── single-sequence modes ─────────────────────────────────────────────────
+    if args.next:
+        steps = [s.strip() for s in args.next.split("|") if s.strip()]
+        preds = model.predict_next(steps, top_k=10)
+        print(f"Model: {args.model}  |  prefix: {len(steps)} steps  |  last: {steps[-1]}")
+        print("Top-10 next steps:")
+        for i, p in enumerate(preds, 1):
+            print(f"  {i:2d}.  {p}")
+        raise SystemExit(0)
+
+    if args.complete:
+        steps = [s.strip() for s in args.complete.split("|") if s.strip()]
+        completion = model.predict_completion(steps)
+        print(f"Model: {args.model}  |  prefix: {len(steps)} steps  →  {len(completion)} generated")
+        for i, s in enumerate(completion, 1):
+            print(f"  {i:3d}.  {s}")
+        raise SystemExit(0)
+
+    # ── batch task modes ──────────────────────────────────────────────────────
+    if not args.task:
+        parser.error("provide --task or --next or --complete")
+
+    def progress(done, total):
+        print(f"  {done}/{total}...", end="\r", flush=True)
+
+    if args.task == "1":
+        pred_csv, msg = run_task1(model, Path(args.valid), progress_cb=progress)
+        print("\n" + msg)
+    elif args.task == "2":
+        pred_csv, msg = run_task2(model, Path(args.valid), progress_cb=progress)
+        print("\n" + msg)
+    elif args.task == "3":
+        pred_csv, msg = run_task3(model, Path(args.anomaly), progress_cb=progress)
+        print("\n" + msg)
+    elif args.task == "self1":
+        scores, pred_csv = self_benchmark_task1(model, progress_cb=progress,
+                                                max_per_family=args.n_seqs)
+        print("\n" + scores)
+    elif args.task == "self2":
+        scores, pred_csv = self_benchmark_task2(model, progress_cb=progress,
+                                                max_per_family=args.n_seqs)
+        print("\n" + scores)
+
+    if args.output and pred_csv:
+        Path(args.output).write_text(pred_csv)
+        print(f"\nSaved → {args.output}")
