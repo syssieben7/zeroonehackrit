@@ -18,10 +18,10 @@ pixi run python train.py \
     --model $HOME/zeroonehackrit/models/models--t5-small/snapshots/$(ls $HOME/zeroonehackrit/models/models--t5-small/snapshots/ | head -1) \
     --data_dir $HOME/zeroonehackrit/data/processed/transformer \
     --out_dir $HOME/zeroonehackrit/checkpoints_tiny \
-    --epochs 1 \
-    --batch_size 64 \
-    --max_input_len 128 \
-    --max_output_len 128 \
-    --max_samples 10000 \
+    --epochs 3 \
+    --batch_size 32 \
+    --max_input_len 256 \
+    --max_output_len 256 \
+    --max_samples 20000 \
     --log_every 25 \
     --workers 4
