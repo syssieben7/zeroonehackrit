@@ -34,7 +34,7 @@ from transformers import (
 
 
 class SequenceDataset(Dataset):
-    def __init__(self, path: Path, tokenizer, max_input_len: int, max_output_len: int):
+    def __init__(self, path: Path, tokenizer, max_input_len: int, max_output_len: int, max_samples: int = 0):
         self.tokenizer = tokenizer
         self.max_input_len = max_input_len
         self.max_output_len = max_output_len
@@ -43,6 +43,8 @@ class SequenceDataset(Dataset):
             for line in f:
                 ex = json.loads(line)
                 self.examples.append((ex["input"], ex["output"]))
+                if max_samples and len(self.examples) >= max_samples:
+                    break
 
     def __len__(self):
         return len(self.examples)
@@ -123,7 +125,7 @@ def train(args):
 
     data_dir = Path(args.data_dir)
     train_ds = SequenceDataset(
-        data_dir / "train.jsonl", tokenizer, args.max_input_len, args.max_output_len
+        data_dir / "train.jsonl", tokenizer, args.max_input_len, args.max_output_len, args.max_samples
     )
     val_ds = SequenceDataset(
         data_dir / "val.jsonl", tokenizer, args.max_input_len, args.max_output_len
@@ -218,6 +220,8 @@ def main():
     )
     parser.add_argument("--log_every", type=int, default=100)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--max_samples", type=int, default=0,
+                        help="Limit training to first N samples (0 = use all)")
     args = parser.parse_args()
     train(args)
 
