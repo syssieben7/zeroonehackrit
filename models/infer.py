@@ -23,11 +23,10 @@ _ROOT       = Path(__file__).parent.parent
 _LCM        = Path(__file__).parent / "lcm"
 _MARKOV_DIR = Path(__file__).parent / "markov"
 _HIER_DIR   = Path(__file__).parent / "hierarchical"
-_HIER2_DIR  = Path(__file__).parent / "hierarchical2"
 _TRANS_DIR  = Path(__file__).parent / "transformer"
 _DATA_GEN   = _ROOT / "data" / "gen"
 
-for _p in (_LCM, _MARKOV_DIR, _HIER_DIR, _HIER2_DIR, _TRANS_DIR, _DATA_GEN):
+for _p in (_LCM, _MARKOV_DIR, _HIER_DIR, _TRANS_DIR, _DATA_GEN):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
@@ -422,19 +421,17 @@ class TransformerAdapter(ModelInterface):
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 _DEFAULT_PATHS = {
-    "markov":        _MARKOV_DIR / "markov.json",
-    "lcm":           _LCM / ".save" / "best_100000_unfinished.pt",
-    "hierarchical":  _HIER_DIR / "model_out",
-    "hierarchical2": _HIER2_DIR / "model_out",
-    "transformer":   _TRANS_DIR / "gpt_ckpt.pt",
+    "markov":       _MARKOV_DIR / "markov.json",
+    "lcm":          _LCM / ".save" / "best_100000_unfinished.pt",
+    "hierarchical": _HIER_DIR / "model_out",
+    "transformer":  _TRANS_DIR / "gpt_ckpt.pt",
 }
 
 _ADAPTER_CLS = {
-    "markov":        MarkovAdapter,
-    "lcm":           Seq2SeqAdapter,
-    "hierarchical":  HierarchicalAdapter,
-    "hierarchical2": HierarchicalAdapter,
-    "transformer":   TransformerAdapter,
+    "markov":       MarkovAdapter,
+    "lcm":          Seq2SeqAdapter,
+    "hierarchical": HierarchicalAdapter,
+    "transformer":  TransformerAdapter,
 }
 
 
@@ -1034,7 +1031,7 @@ examples:
         """,
     )
     parser.add_argument("--model", required=True,
-                        choices=["markov", "lcm", "hierarchical", "hierarchical2", "transformer"],
+                        choices=["markov", "lcm", "hierarchical", "transformer"],
                         help="Model to use")
     parser.add_argument("--task", choices=["1", "2", "3", "self1", "self2"],
                         help="Task to run (1=next-step, 2=completion, 3=anomaly, self1/self2=self-benchmark)")
