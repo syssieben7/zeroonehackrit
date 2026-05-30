@@ -56,7 +56,7 @@ class Decoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.attention = Attention(hidden_size)
         self.gru = nn.GRU(hidden_size + embed_size, hidden_size,
-                          n_layers, dropout=dropout)
+                          n_layers, dropout=dropout if n_layers > 1 else 0)
         self.out = nn.Linear(hidden_size * 2, output_size)
         # Bahdanau §A.2.2: s_0 = tanh(W_s · ←h_1) from encoder's last backward state.
         self.bridge = nn.Linear(hidden_size, hidden_size)

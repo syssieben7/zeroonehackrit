@@ -94,17 +94,9 @@ class ProcessSequenceDataset(Dataset):
                 self.pairs.append((src, trg))
 
     def _sample_cut(self, seq_len):
-        r = random.random()
-        if r < 0.4:
-            # 60% cut
-            cut = int(seq_len * 0.6)
-        elif r < 0.8:
-            # 80% cut
-            cut = int(seq_len * 0.8)
-        else:
-            # uniform [40%-90%]
-            frac = random.uniform(0.4, 0.9)
-            cut = int(seq_len * frac)
+        # Fully uniform random cut between 5% and 95%
+        frac = random.uniform(0.05, 0.95)
+        cut = int(seq_len * frac)
         return max(2, min(cut, seq_len - 1))
 
     def __len__(self):
@@ -124,9 +116,10 @@ def collate_fn(batch):
 
 
 def load_data(data_dir, families=('igbt', 'ic'), batch_size=32,
-              max_sequences=None, val_ratio=0.1, augment_factor=3, seed=42):
+              max_sequences=None, val_ratio=0.1, test_ratio=0.1,
+              augment_factor=3, seed=42):
     """
-    Load process sequence data and return train/val DataLoaders + vocab.
+    Load process sequence data and return train/val/test DataLoaders + vocab.
 
     Args:
         data_dir: Path to directory containing family subdirs (IGBT/, IC/)
@@ -134,11 +127,12 @@ def load_data(data_dir, families=('igbt', 'ic'), batch_size=32,
         batch_size: Batch size for DataLoaders
         max_sequences: Limit sequences per family (None = use all)
         val_ratio: Fraction of sequences for validation
+        test_ratio: Fraction of sequences for test
         augment_factor: Number of random cuts per sequence
         seed: Random seed for reproducibility
 
     Returns:
-        (train_loader, val_loader, vocab)
+        (train_loader, val_loader, test_loader, vocab)
     """
     rng = random.Random(seed)
     vocab = build_vocab(data_dir, families)
@@ -150,6 +144,7 @@ def load_data(data_dir, families=('igbt', 'ic'), batch_size=32,
 
     all_train_seqs = []
     all_val_seqs = []
+    all_test_seqs = []
 
     for fam in families:
         csv_name, fam_tok = family_map[fam]
@@ -161,29 +156,39 @@ def load_data(data_dir, families=('igbt', 'ic'), batch_size=32,
         if max_sequences:
             seq_list = seq_list[:max_sequences]
 
+        n_test = max(1, int(len(seq_list) * test_ratio))
         n_val = max(1, int(len(seq_list) * val_ratio))
-        val_seqs = seq_list[:n_val]
-        train_seqs = seq_list[n_val:]
+        test_seqs = seq_list[:n_test]
+        val_seqs = seq_list[n_test:n_test + n_val]
+        train_seqs = seq_list[n_test + n_val:]
 
         all_train_seqs.append((train_seqs, fam_tok))
         all_val_seqs.append((val_seqs, fam_tok))
+        all_test_seqs.append((test_seqs, fam_tok))
 
     # Build datasets
     train_ds_parts = []
     val_ds_parts = []
+    test_ds_parts = []
     for seqs, fam_tok in all_train_seqs:
         train_ds_parts.append(
             ProcessSequenceDataset(seqs, fam_tok, vocab, augment_factor))
     for seqs, fam_tok in all_val_seqs:
         val_ds_parts.append(
             ProcessSequenceDataset(seqs, fam_tok, vocab, augment_factor=1))
+    for seqs, fam_tok in all_test_seqs:
+        test_ds_parts.append(
+            ProcessSequenceDataset(seqs, fam_tok, vocab, augment_factor=1))
 
     train_ds = torch.utils.data.ConcatDataset(train_ds_parts)
     val_ds = torch.utils.data.ConcatDataset(val_ds_parts)
+    test_ds = torch.utils.data.ConcatDataset(test_ds_parts)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size,
                               shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_ds, batch_size=batch_size,
                             shuffle=False, collate_fn=collate_fn)
+    test_loader = DataLoader(test_ds, batch_size=batch_size,
+                             shuffle=False, collate_fn=collate_fn)
 
-    return train_loader, val_loader, vocab
+    return train_loader, val_loader, test_loader, vocab
