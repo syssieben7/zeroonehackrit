@@ -175,10 +175,15 @@ class HierarchicalAdapter(ModelInterface):
         self._BOS = "<bos>"
         self._EOS = "<eos>"
         self._PAD = "<pad>"
+        # read max context from the saved config (n_positions=256 for this checkpoint)
+        cfg = json.loads((model_dir / "config.json").read_text())
+        self._max_len = cfg.get("n_positions", 256)
 
     def _ids(self, prefix: list[str]) -> list[int]:
-        return ([self._vocab[self._BOS]] +
-                [self._vocab.get(t, self._vocab[self._PAD]) for t in prefix])
+        ids = ([self._vocab[self._BOS]] +
+               [self._vocab.get(t, self._vocab[self._PAD]) for t in prefix])
+        # keep the most recent context when prefix exceeds the trained context window
+        return ids[-self._max_len:]
 
     def predict_next(self, prefix: list[str], top_k: int = 5) -> list[str]:
         import torch
@@ -196,7 +201,8 @@ class HierarchicalAdapter(ModelInterface):
         result = []
         with torch.no_grad():
             for _ in range(max_steps):
-                x = torch.tensor([ids], dtype=torch.long, device=self._dev)
+                # slide the window if we hit the context limit
+                x = torch.tensor([ids[-self._max_len:]], dtype=torch.long, device=self._dev)
                 nxt = int(self._model(x).logits[0, -1].argmax())
                 if nxt == eos_id:
                     break
@@ -351,11 +357,13 @@ def load_model(name: str, path: Path = None) -> ModelInterface:
 
 def available_models() -> list[str]:
     """Return names of models whose checkpoint/directory exists."""
-    result = []
-    for name, path in _DEFAULT_PATHS.items():
-        if path.exists():
-            result.append(name)
-    return result
+    return [name for name, path in _DEFAULT_PATHS.items() if path.exists()]
+
+
+def missing_models() -> dict[str, str]:
+    """Return {name: expected_path} for models whose checkpoint is absent."""
+    return {name: str(path) for name, path in _DEFAULT_PATHS.items()
+            if not path.exists()}
 
 
 # ── Batch eval helpers ────────────────────────────────────────────────────────
@@ -391,8 +399,13 @@ def run_task1(model: ModelInterface, eval_valid_csv: Path,
             progress_cb(i + 1, len(rows))
 
     pred_csv = buf.getvalue()
-    scores = _score_task1(rows, pred_csv)
-    return pred_csv, scores
+    msg = (
+        f"Predictions generated for {len(rows)} examples.\n"
+        "eval_input_valid.csv contains no ground-truth labels — submit the CSV "
+        "to the organizers for official scoring.\n"
+        "Use 'Self-Benchmark' to score against your own held-out split."
+    )
+    return pred_csv, msg
 
 
 def run_task2(model: ModelInterface, eval_valid_csv: Path,
@@ -414,8 +427,13 @@ def run_task2(model: ModelInterface, eval_valid_csv: Path,
             progress_cb(i + 1, len(rows))
 
     pred_csv = buf.getvalue()
-    scores = _score_task2(rows, pred_csv)
-    return pred_csv, scores
+    msg = (
+        f"Predictions generated for {len(rows)} examples.\n"
+        "eval_input_valid.csv contains no ground-truth labels — submit the CSV "
+        "to the organizers for official scoring.\n"
+        "Use 'Self-Benchmark' to score against your own held-out split."
+    )
+    return pred_csv, msg
 
 
 def run_task3(model: ModelInterface, eval_anomaly_csv: Path,
@@ -688,4 +706,195 @@ def _score_task3(gt_rows: list[dict], pred_csv: str) -> str:
         f"  TP={tp}  FP={fp}",
         f"  FN={fn}  TN={tn}",
     ]
+    return "\n".join(lines)
+
+
+# ── Self-benchmark (scored against variant CSVs) ──────────────────────────────
+
+_EXTENDED_CANDIDATES = [
+    # preferred: extended files are independent of variant-trained models
+    _ROOT / "data" / "raw" / "MOSFET" / "MOSFET_extended.csv",
+    _ROOT / "data" / "raw" / "IGBT"   / "IGBT_extended.csv",
+    _ROOT / "data" / "raw" / "IC"     / "IC_extended.csv",
+    # old layout
+    _ROOT / "data" / "raw" / "infineon" / "MOSFET" / "MOSFET_extended.csv",
+    _ROOT / "data" / "raw" / "infineon" / "IGBT"   / "IGBT_extended.csv",
+    _ROOT / "data" / "raw" / "infineon" / "IC"     / "IC_extended.csv",
+]
+
+_VARIANT_FALLBACK = [
+    _ROOT / "data" / "raw" / "MOSFET" / "MOSFET_variants.csv",
+    _ROOT / "data" / "raw" / "IGBT"   / "IGBT_variants.csv",
+    _ROOT / "data" / "raw" / "IC"     / "IC_variants.csv",
+    _ROOT / "data" / "raw" / "infineon" / "MOSFET" / "MOSFET_variants.csv",
+    _ROOT / "data" / "raw" / "infineon" / "IGBT"   / "IGBT_variants.csv",
+    _ROOT / "data" / "raw" / "infineon" / "IC"     / "IC_variants.csv",
+]
+
+
+def _load_benchmark_seqs(max_per_family: int = 150,
+                         seed: int = 42) -> tuple[list[tuple[str, list[str]]], str]:
+    """
+    Load sequences for self-benchmarking.
+    Prefers *_extended.csv (unseen by variant-trained models) and falls back
+    to *_variants.csv. Returns (sequences, source_label).
+    """
+    import random
+    rng = random.Random(seed)
+    seqs_out = []
+    seen_families: set[str] = set()
+    source_label = "extended"
+
+    candidates = _EXTENDED_CANDIDATES
+    if not any(p.exists() for p in candidates):
+        candidates = _VARIANT_FALLBACK
+        source_label = "variants (extended not found)"
+
+    seen_paths: set[str] = set()
+    for path in candidates:
+        if not path.exists() or str(path) in seen_paths:
+            continue
+        seen_paths.add(str(path))
+        stem   = path.stem  # e.g. "MOSFET_extended"
+        family = stem.split("_")[0].upper()
+        if family in seen_families:
+            continue
+        seen_families.add(family)
+
+        seqs: dict[str, list[str]] = {}
+        with path.open(newline="", encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                sid  = row.get("SEQUENCE_ID", "").strip()
+                step = row.get("STEP", "").strip()
+                if sid and step:
+                    seqs.setdefault(sid, []).append(step)
+
+        ids = list(seqs.keys())
+        rng.shuffle(ids)
+        for sid in ids[:max_per_family]:
+            seqs_out.append((family, seqs[sid]))
+
+    return seqs_out, source_label
+
+
+def self_benchmark_task1(model: ModelInterface,
+                         progress_cb=None,
+                         max_per_family: int = 50) -> str:
+    """
+    Evaluate next-step accuracy on extended sequences (unseen by variant-trained models).
+    Samples every 5th position between 10% and 90% of each sequence.
+    """
+    test_seqs, source = _load_benchmark_seqs(max_per_family=max_per_family)
+    if not test_seqs:
+        return "No extended or variant CSVs found. Expected at data/raw/MOSFET|IGBT|IC/*_extended.csv"
+
+    top1 = top3 = top5 = total = 0
+    rr = 0.0
+    by_fam: dict[str, list] = {}
+
+    for i, (family, steps) in enumerate(test_seqs):
+        n = len(steps)
+        positions = range(max(1, n // 10), int(n * 0.9), max(1, n // 20))
+        for pos in positions:
+            prefix    = steps[:pos]
+            true_next = steps[pos]
+            preds     = model.predict_next(prefix, top_k=5)
+
+            h1 = bool(preds) and preds[0] == true_next
+            h3 = true_next in preds[:3]
+            h5 = true_next in preds[:5]
+            r  = 1.0 / (preds.index(true_next) + 1) if true_next in preds else 0.0
+
+            top1 += h1; top3 += h3; top5 += h5; rr += r; total += 1
+            by_fam.setdefault(family, [0, 0, 0, 0.0, 0])
+            d = by_fam[family]
+            d[0] += h1; d[1] += h3; d[2] += h5; d[3] += r; d[4] += 1
+
+        if progress_cb and (i + 1) % 20 == 0:
+            progress_cb(i + 1, len(test_seqs))
+
+    if total == 0:
+        return "No evaluation positions found."
+
+    lines = [
+        "=" * 55,
+        "SELF-BENCHMARK — TASK 1: NEXT-STEP PREDICTION",
+        f"(source: {source}, {len(test_seqs)} sequences, {total} positions)",
+        "=" * 55,
+        f"Top-1 Accuracy : {_safe_div(top1,total):.4f}  ({top1}/{total})",
+        f"Top-3 Accuracy : {_safe_div(top3,total):.4f}",
+        f"Top-5 Accuracy : {_safe_div(top5,total):.4f}",
+        f"MRR            : {_safe_div(rr,total):.4f}",
+        "\nBy family:",
+    ]
+    for fam, (t1, t3, t5, r, n) in sorted(by_fam.items()):
+        lines.append(
+            f"  {fam:<8}  Top-1:{_safe_div(t1,n):.3f}  "
+            f"Top-3:{_safe_div(t3,n):.3f}  Top-5:{_safe_div(t5,n):.3f}  "
+            f"MRR:{_safe_div(r,n):.3f}  (n={n})"
+        )
+    return "\n".join(lines)
+
+
+def self_benchmark_task2(model: ModelInterface,
+                         progress_cb=None,
+                         max_per_family: int = 15) -> str:
+    """
+    Evaluate sequence completion on extended sequences at 60% and 80% cut points.
+    """
+    test_seqs, source = _load_benchmark_seqs(max_per_family=max_per_family)
+    if not test_seqs:
+        return "No extended or variant CSVs found. Expected at data/raw/MOSFET|IGBT|IC/*_extended.csv"
+
+    ned_all = []; exact_all = []; tacc_all = []; bacc_all = []
+    by_frac: dict[str, dict] = {}
+
+    for i, (family, steps) in enumerate(test_seqs):
+        n = len(steps)
+        for frac in (0.6, 0.8):
+            cut       = int(n * frac)
+            prefix    = steps[:cut]
+            ref       = steps[cut:]
+            if not ref:
+                continue
+            predicted = model.predict_completion(prefix)
+
+            ned   = _levenshtein(predicted, ref) / max(len(predicted), len(ref), 1)
+            exact = predicted == ref
+            m     = min(len(predicted), len(ref))
+            tacc  = sum(p == r for p, r in zip(predicted, ref)) / m if m else 0.0
+            bacc  = (sum(p == r for p, r in zip(_block_sig(predicted), _block_sig(ref)))
+                     / max(len(_block_sig(ref)), 1))
+
+            ned_all.append(ned); exact_all.append(exact)
+            tacc_all.append(tacc); bacc_all.append(bacc)
+            key = f"{int(frac*100)}%"
+            by_frac.setdefault(key, {"ned": [], "exact": [], "tacc": [], "bacc": []})
+            by_frac[key]["ned"].append(ned);   by_frac[key]["exact"].append(exact)
+            by_frac[key]["tacc"].append(tacc); by_frac[key]["bacc"].append(bacc)
+
+        if progress_cb and (i + 1) % 10 == 0:
+            progress_cb(i + 1, len(test_seqs))
+
+    if not ned_all:
+        return "No evaluation examples found."
+
+    def mean(lst): return sum(lst) / len(lst) if lst else float("nan")
+
+    lines = [
+        "=" * 55,
+        "SELF-BENCHMARK — TASK 2: SEQUENCE COMPLETION",
+        f"(source: {source}, {len(test_seqs)} sequences)",
+        "=" * 55,
+        f"Mean NED (lower=better) : {mean(ned_all):.4f}",
+        f"Exact Match Rate        : {mean(exact_all):.4f}  ({sum(exact_all)}/{len(exact_all)})",
+        f"Mean Token Accuracy     : {mean(tacc_all):.4f}",
+        f"Mean Block Accuracy     : {mean(bacc_all):.4f}",
+        "\nBy cut point:",
+    ]
+    for frac, d in sorted(by_frac.items()):
+        lines.append(
+            f"  {frac}  NED:{mean(d['ned']):.3f}  Exact:{mean(d['exact']):.3f}  "
+            f"TokAcc:{mean(d['tacc']):.3f}  BlkAcc:{mean(d['bacc']):.3f}"
+        )
     return "\n".join(lines)
