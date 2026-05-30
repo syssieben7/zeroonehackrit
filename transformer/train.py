@@ -38,6 +38,7 @@ class SequenceDataset(Dataset):
         self.tokenizer = tokenizer
         self.max_input_len = max_input_len
         self.max_output_len = max_output_len
+        # store raw strings only — tokenize lazily in __getitem__
         self.examples = []
         with path.open(encoding="utf-8") as f:
             for line in f:
@@ -45,6 +46,7 @@ class SequenceDataset(Dataset):
                 self.examples.append((ex["input"], ex["output"], ex.get("task", "unknown")))
                 if max_samples and len(self.examples) >= max_samples:
                     break
+        print(f"  Loaded {len(self.examples)} examples from {path.name}")
 
     def __len__(self):
         return len(self.examples)
