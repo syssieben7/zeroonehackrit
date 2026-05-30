@@ -16,10 +16,6 @@ python app.py
 # → open http://127.0.0.1:7860
 ```
 
-> **AMD GPU:** install the ROCm build instead: `pip install torch --index-url https://download.pytorch.org/whl/rocm6.2`
-
----
-
 ## Interface
 
 The app has three tabs:
@@ -32,15 +28,15 @@ The app has three tabs:
 
 ---
 
-## CLI — generate task predictions directly
+## I don't like GUIs...
 
-All four adapters are importable. The fastest path to submission CSVs:
+`models/infer.py` is fully usable as a library. Run from the repo root:
 
 ```python
 from models.infer import load_model, run_task1, run_task2, run_task3
 from pathlib import Path
 
-model = load_model("seq2seq")   # or: markov | hierarchical | transformer
+model = load_model("seq2seq")  # markov | hierarchical | transformer
 
 VALID   = Path("data/participant_files/eval_input_valid.csv")
 ANOMALY = Path("data/participant_files/eval_input_anomaly.csv")
@@ -54,7 +50,7 @@ Path("task2_predictions.csv").write_text(pred2)
 Path("task3_predictions.csv").write_text(pred3)
 ```
 
-Score locally (Task 3 only — others need the organiser GT file):
+Score Task 3 locally (Tasks 1 & 2 need the organiser's ground-truth file):
 
 ```bash
 python data/participant_files/eval_metrics.py \
@@ -72,26 +68,4 @@ python data/participant_files/eval_metrics.py \
 | `markov` | `models/markov/markov.json` | No training needed — transition counts from training data |
 | `seq2seq` | `models/seq2seq/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
 | `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
-| `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch (train first) |
-
-Train the transformer:
-```bash
-python models/transformer/train.py data/raw
-```
-
----
-
-## Data layout
-
-```
-data/
-  raw/
-    MOSFET/   IGBT/   IC/       ← *_variants.csv (training), *_extended.csv (benchmark)
-  participant_files/
-    eval_input_valid.csv         ← Tasks 1 & 2 input (600 partial sequences)
-    eval_input_anomaly.csv       ← Task 3 input (987 sequences)
-    eval_metrics.py              ← official scoring script
-  gen/
-    generate_sequences.py        ← generate more training data
-    generation_rules.md          ← full process grammar & eval protocol
-```
+| `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch |
