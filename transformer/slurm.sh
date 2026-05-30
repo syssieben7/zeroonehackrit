@@ -9,7 +9,7 @@
 #SBATCH --time=00:00:10 # Time limit in HH:MM:SS, up to 24:00:00
 #SBATCH --account=EUHPC_D30_031
 
-pixi run python transformer/train.py \
+pixi run python train.py \
     --model t5-small \
     --data_dir data/processed/transformer \
     --out_dir checkpoints \
