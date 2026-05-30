@@ -15,13 +15,12 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-# need the validator — re-export path is already set by hierarchical_tokenizer
-from generate_sequences import validate_sequence
 from hierarchical_tokenizer import (
     BLOCKS,
     generate_labeled_sequence,
     labeled_to_steps,
     to_augmented_tokens,
+    validate_sequence,
 )
 from torch.utils.data import DataLoader, Dataset
 from transformers import GPT2Config, GPT2LMHeadModel
