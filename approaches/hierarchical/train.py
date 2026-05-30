@@ -28,9 +28,9 @@ from transformers import GPT2Config, GPT2LMHeadModel
 # ── Config ────────────────────────────────────────────────────────────────────
 
 FAMILIES = ["mosfet", "igbt", "ic"]
-N_PER_FAMILY = 1000
-EPOCHS = 15
-BATCH_SIZE = 32
+N_PER_FAMILY = 10000
+EPOCHS = 50
+BATCH_SIZE = 64
 LR = 3e-4
 OUT_DIR = Path("model_out")
 
@@ -105,10 +105,10 @@ def train():
     cfg = GPT2Config(
         vocab_size=len(vocab),
         n_positions=256,
-        n_embd=256,
-        n_layer=4,
-        n_head=4,
-        n_inner=512,
+        n_embd=512,
+        n_layer=6,
+        n_head=8,
+        n_inner=2048,
         resid_pdrop=0.1,
         embd_pdrop=0.1,
         attn_pdrop=0.1,
