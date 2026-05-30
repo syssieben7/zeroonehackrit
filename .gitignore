@@ -9,3 +9,5 @@ docs/.obsidian/
 data/raw/infineon/IC/IC_variants.csv
 data/raw/infineon/IGBT/IGBT_variants.csv
 data/raw/infineon/MOSFET/MOSFET_variants.csv
+data/raw/IC/IC_variants.csv
+data/raw/IGBT/IGBT_variants.csv
