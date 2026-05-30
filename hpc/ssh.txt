@@ -4,4 +4,4 @@ ssh $HPC_USERNAME@login05-ext.leonardo.cineca.it
 scp ./hpc/scp/* $HPC_USERNAME@login05-ext.leonardo.cineca.it:/leonardo/home/usertrain/a08trc0y/venv
 
 #on leonardo:
-srun run -v slurm.sh
+sbatch run -v slurm.sh

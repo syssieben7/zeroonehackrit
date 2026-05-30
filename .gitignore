@@ -4,3 +4,8 @@ zero_one_hack_01
 docs/.obsidian/
 .DS_Store
 *.pyc
+
+# Large data files
+data/raw/infineon/IC/IC_variants.csv
+data/raw/infineon/IGBT/IGBT_variants.csv
+data/raw/infineon/MOSFET/MOSFET_variants.csv

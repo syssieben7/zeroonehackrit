@@ -38,7 +38,7 @@ def load_model(checkpoint_path, device):
     encoder = Encoder(vocab_size, args['embed_size'], args['hidden_size'],
                       n_layers=2, dropout=0.0)
     decoder = Decoder(args['embed_size'], args['hidden_size'], vocab_size,
-                      n_layers=1, dropout=0.0)
+                      n_layers=args.get('dec_layers', 1), dropout=0.0)
     model = Seq2Seq(encoder, decoder, tie_embeddings=True).to(device)
     model.load_state_dict(ckpt['model_state'])
     model.eval()
@@ -115,10 +115,12 @@ def read_eval_input(csv_path):
 
 
 def detect_family(steps):
-    """Heuristic to detect family from step content. Default to IGBT."""
+    """Heuristic to detect family from step content."""
     step_str = ' '.join(steps).upper()
-    if 'EPITAXIAL' in step_str or 'EPITAXY' in step_str:
+    if 'P BODY' in step_str or 'N BUFFER' in step_str or 'CHANNEL STOP' in step_str:
         return 'igbt'
+    if 'EPITAXIAL DEPOSITION' in step_str or 'SUBSTRATE CHECK' in step_str:
+        return 'igbt'  # MOSFET not in training; map to closest
     return 'ic'
 
 
