@@ -9,7 +9,7 @@
 #SBATCH --time=04:00:00 # Time limit in HH:MM:SS, up to 24:00:00
 #SBATCH --job-name=seq2seq_100k
 #SBATCH --output=train_%j.log
-#SBATCH --account=EUHPC_D30_031
+#SBATCH --account=<YOUR_SLURM_ACCOUNT>
 
 pixi run python train.py \
     -epochs 50 \
