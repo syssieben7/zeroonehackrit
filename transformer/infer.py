@@ -124,20 +124,40 @@ def predict_completion(
 ) -> list[str]:
     """
     Autoregressively predict one step at a time until SHIP LOT or max_steps.
-    Uses the next_step task which the model learned well, rather than trying
-    to generate the full sequence in one shot (which truncation broke at training).
+    Uses the next_step task which the model learned well.
     """
     TERMINAL = "SHIP LOT"
     current = list(steps)
     generated = []
+    repeat_count = 0
+    last_step = None
 
     for _ in range(max_steps):
-        top = predict_next_step(model, tokenizer, device, family, current, top_k=1)
-        if not top:
+        try:
+            top = predict_next_step(model, tokenizer, device, family, current, top_k=1)
+        except Exception:
             break
-        next_step = top[0]
+
+        if not top or not top[0].strip():
+            break
+
+        next_step = top[0].strip()
+
+        # break out of repetition loops
+        if next_step == last_step:
+            repeat_count += 1
+            if repeat_count >= 3:
+                break
+        else:
+            repeat_count = 0
+        last_step = next_step
+
         generated.append(next_step)
+        # keep current at most MAX_INPUT worth of steps to avoid truncation slowdown
         current.append(next_step)
+        if len(current) > 80:
+            current = current[-80:]
+
         if next_step == TERMINAL:
             break
 
@@ -292,17 +312,28 @@ def run_interactive(model, tokenizer, device):
             print("  Please include at least one step after the family.\n")
             continue
 
-        print(f"\n  Next step (top 5):")
-        for i, s in enumerate(predict_next_step(model, tokenizer, device, family, steps), 1):
-            print(f"    {i}. {s}")
+        try:
+            print(f"\n  Next step (top 5):")
+            for i, s in enumerate(predict_next_step(model, tokenizer, device, family, steps), 1):
+                print(f"    {i}. {s}")
+        except Exception as e:
+            print(f"  [next_step error: {e}]")
 
-        print(f"\n  Completion:")
-        comp = predict_completion(model, tokenizer, device, family, steps)
-        print(f"    {SEP.join(comp)}")
+        try:
+            print(f"\n  Completion:")
+            comp = predict_completion(model, tokenizer, device, family, steps)
+            print(f"    {SEP.join(comp) if comp else '(no completion generated)'}")
+        except Exception as e:
+            print(f"  [completion error: {e}]")
+            comp = []
 
-        is_valid, score, rule = predict_validity(model, tokenizer, device, family, steps + comp)
-        verdict = "VALID" if is_valid else f"INVALID ({rule})"
-        print(f"\n  Validity: {verdict} (score={score})\n")
+        try:
+            full = steps + comp
+            is_valid, score, rule = predict_validity(model, tokenizer, device, family, full[-80:])
+            verdict = "VALID" if is_valid else f"INVALID ({rule})"
+            print(f"\n  Validity: {verdict} (score={score})\n")
+        except Exception as e:
+            print(f"  [validity error: {e}]\n")
 
 
 # ---------------------------------------------------------------------------

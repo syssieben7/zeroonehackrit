@@ -42,7 +42,7 @@ class SequenceDataset(Dataset):
         with path.open(encoding="utf-8") as f:
             for line in f:
                 ex = json.loads(line)
-                self.examples.append((ex["input"], ex["output"]))
+                self.examples.append((ex["input"], ex["output"], ex.get("task", "unknown")))
                 if max_samples and len(self.examples) >= max_samples:
                     break
 
@@ -50,7 +50,7 @@ class SequenceDataset(Dataset):
         return len(self.examples)
 
     def __getitem__(self, idx):
-        inp, out = self.examples[idx]
+        inp, out, task = self.examples[idx]
         enc = self.tokenizer(
             inp,
             max_length=self.max_input_len,
@@ -66,13 +66,13 @@ class SequenceDataset(Dataset):
             return_tensors="pt",
         )
         labels = dec.input_ids.squeeze()
-        # T5 convention: replace padding token id with -100 so loss ignores it
         labels[labels == self.tokenizer.pad_token_id] = -100
 
         return {
-            "input_ids": enc.input_ids.squeeze(),
+            "input_ids":      enc.input_ids.squeeze(),
             "attention_mask": enc.attention_mask.squeeze(),
-            "labels": labels,
+            "labels":         labels,
+            "task":           task,
         }
 
 
@@ -83,31 +83,42 @@ class SequenceDataset(Dataset):
 
 def evaluate(model, loader, device, tokenizer, max_output_len):
     model.eval()
-    total, correct = 0, 0
+    counts = {"next_step": [0, 0], "completion": [0, 0], "validate": [0, 0], "unknown": [0, 0]}
+
     with torch.no_grad():
         for batch in loader:
-            input_ids = batch["input_ids"].to(device)
+            input_ids      = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels = batch["labels"].to(device)
+            labels         = batch["labels"].to(device)
+            tasks          = batch["task"]
 
             generated = model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 max_new_tokens=max_output_len,
             )
-            # decode predictions and targets
-            preds = tokenizer.batch_decode(generated, skip_special_tokens=True)
+            preds   = tokenizer.batch_decode(generated, skip_special_tokens=True)
             targets = labels.clone()
             targets[targets == -100] = tokenizer.pad_token_id
-            refs = tokenizer.batch_decode(targets, skip_special_tokens=True)
+            refs    = tokenizer.batch_decode(targets, skip_special_tokens=True)
 
-            for pred, ref in zip(preds, refs):
-                total += 1
+            for pred, ref, task in zip(preds, refs, tasks):
+                bucket = counts.get(task, counts["unknown"])
+                bucket[0] += 1
                 if pred.strip() == ref.strip():
-                    correct += 1
+                    bucket[1] += 1
 
     model.train()
-    return correct / total if total else 0.0
+
+    per_task = {t: (v[1] / v[0] if v[0] else 0.0) for t, v in counts.items() if v[0] > 0}
+    total    = sum(v[0] for v in counts.values())
+    correct  = sum(v[1] for v in counts.values())
+    overall  = correct / total if total else 0.0
+
+    lines = "  |  ".join(f"{t}: {a:.1%}" for t, a in per_task.items())
+    print(f"  Per-task: {lines}")
+
+    return overall
 
 
 # ---------------------------------------------------------------------------
@@ -131,11 +142,21 @@ def train(args):
         data_dir / "val.jsonl", tokenizer, args.max_input_len, args.max_output_len
     )
 
+    def collate_fn(batch):
+        return {
+            "input_ids":      torch.stack([b["input_ids"] for b in batch]),
+            "attention_mask": torch.stack([b["attention_mask"] for b in batch]),
+            "labels":         torch.stack([b["labels"] for b in batch]),
+            "task":           [b["task"] for b in batch],
+        }
+
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.workers
+        train_ds, batch_size=args.batch_size, shuffle=True,
+        num_workers=args.workers, collate_fn=collate_fn,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.workers
+        val_ds, batch_size=args.batch_size, shuffle=False,
+        num_workers=args.workers, collate_fn=collate_fn,
     )
 
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
