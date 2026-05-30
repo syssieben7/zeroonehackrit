@@ -3,21 +3,39 @@ from pathlib import Path
 import torch, torch.nn as nn, torch.nn.functional as F
 
 DATA = sys.argv[1]
+OOD = "--ood" in sys.argv
 sys.path.insert(0, DATA)
 from generate_sequences import read_csv_sequences
 
 dev = "cuda" if torch.cuda.is_available() else "cpu"
 print("device:", dev, flush=True)
+
 families = ["MOSFET", "IGBT", "IC"]
 raw = {f: read_csv_sequences(Path(f"{DATA}/{f}_variants.csv")) for f in families}
 
 random.seed(0)
-train, test = [], []
+split = {}  # family → (train_list, test_list) of (fam, seq)
 for f in families:
     ids = list(raw[f]); random.shuffle(ids)
+    t, v = [], []
     for i, sid in enumerate(ids):
-        (test if i < 100 else train).append((f, raw[f][sid]))
+        (v if i < 100 else t).append((f, raw[f][sid]))
+    split[f] = (t, v)
 
+if OOD:
+    train_families = ["MOSFET", "IGBT"]
+    id_families    = ["MOSFET", "IGBT"]
+    ood_families   = ["IC"]
+    print("=== GPT OOD mode: train on MOSFET+IGBT, test on IC ===", flush=True)
+else:
+    train_families = families
+    id_families    = families
+    ood_families   = []
+    print("=== GPT full in-dist mode ===", flush=True)
+
+train = [ex for f in train_families for ex in split[f][0]]
+
+# vocab from ALL families so IC steps are representable even in OOD mode
 steps = sorted({s for f in families for q in raw[f].values() for s in q})
 PAD, BOS = "<PAD>", "<BOS>"
 fam_tok = {f: f"<FAM_{f}>" for f in families}
@@ -76,14 +94,25 @@ for ep in range(8):
         opt.zero_grad(); loss.backward(); opt.step(); tot += loss.item(); nb += 1
     print(f"epoch {ep} loss {tot/nb:.4f}", flush=True)
 
-model.eval(); t1 = t3 = t5 = n = 0
-with torch.no_grad():
-    for f, seq in test:
-        ids = encode(f, seq)
-        logits = model(torch.tensor([ids], device=dev))[0]
-        for j in range(2, len(ids)-1):
-            gold = ids[j+1]; tk = torch.topk(logits[j], 5).indices.tolist(); n += 1
-            t1 += gold in tk[:1]; t3 += gold in tk[:3]; t5 += gold in tk[:5]
-print(f"GPT next-step:  Top1={t1/n:.3f}  Top3={t3/n:.3f}  Top5={t5/n:.3f}  (n={n})", flush=True)
-torch.save({"model": model.state_dict(), "stoi": stoi, "itos": itos}, "gpt_ckpt.pt")
-print("saved gpt_ckpt.pt", flush=True)
+def eval_split(seqs, label):
+    t1 = t3 = t5 = n = 0
+    with torch.no_grad():
+        for f, seq in seqs:
+            ids = encode(f, seq)
+            logits = model(torch.tensor([ids], device=dev))[0]
+            for j in range(2, len(ids)-1):
+                gold = ids[j+1]; tk = torch.topk(logits[j], 5).indices.tolist(); n += 1
+                t1 += gold in tk[:1]; t3 += gold in tk[:3]; t5 += gold in tk[:5]
+    print(f"GPT next-step {label}:  Top1={t1/n:.3f}  Top3={t3/n:.3f}  Top5={t5/n:.3f}  (n={n})", flush=True)
+
+model.eval()
+id_seqs = [ex for f in id_families for ex in split[f][1]]
+eval_split(id_seqs, "in-dist")
+
+if ood_families:
+    ood_seqs = [ex for f in ood_families for ex in split[f][1]]
+    eval_split(ood_seqs, "OOD (IC)")
+
+ckpt_name = "gpt_ckpt_ood.pt" if OOD else "gpt_ckpt.pt"
+torch.save({"model": model.state_dict(), "stoi": stoi, "itos": itos, "ood": OOD}, ckpt_name)
+print(f"saved {ckpt_name}", flush=True)

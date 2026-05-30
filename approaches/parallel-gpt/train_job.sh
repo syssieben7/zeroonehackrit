@@ -11,4 +11,13 @@
 
 cd $SCRATCH/mlenv
 export LD_LIBRARY_PATH=$SCRATCH/mlenv/.pixi/envs/default/lib:$LD_LIBRARY_PATH
-$HOME/.pixi/bin/pixi run --as-is python3 train.py $SCRATCH/zero_one_hack_01/tracks/industrial-infineon/training_data
+DATA=$SCRATCH/zero_one_hack_01/tracks/industrial-infineon/training_data
+
+echo "=== Running n-gram baseline (full in-dist) ==="
+$HOME/.pixi/bin/pixi run --as-is python3 baseline.py $DATA
+
+echo "=== Running n-gram baseline (OOD) ==="
+$HOME/.pixi/bin/pixi run --as-is python3 baseline.py $DATA --ood
+
+echo "=== Running GPT (OOD: train MOSFET+IGBT, test IC) ==="
+$HOME/.pixi/bin/pixi run --as-is python3 train.py $DATA --ood
