@@ -791,6 +791,10 @@ def self_benchmark_task1(model: ModelInterface,
     top1 = top3 = top5 = total = 0
     rr = 0.0
     by_fam: dict[str, list] = {}
+    csv_buf = io.StringIO()
+    csv_w = csv.writer(csv_buf)
+    csv_w.writerow(["FAMILY", "PREFIX_LEN", "TRUE_NEXT", "RANK_1", "RANK_2",
+                    "RANK_3", "RANK_4", "RANK_5", "HIT_TOP1", "HIT_TOP3", "HIT_TOP5"])
 
     for i, (family, steps) in enumerate(test_seqs):
         n = len(steps)
@@ -799,6 +803,7 @@ def self_benchmark_task1(model: ModelInterface,
             prefix    = steps[:pos]
             true_next = steps[pos]
             preds     = model.predict_next(prefix, top_k=5)
+            preds5    = (preds + [""] * 5)[:5]
 
             h1 = bool(preds) and preds[0] == true_next
             h3 = true_next in preds[:3]
@@ -809,12 +814,16 @@ def self_benchmark_task1(model: ModelInterface,
             by_fam.setdefault(family, [0, 0, 0, 0.0, 0])
             d = by_fam[family]
             d[0] += h1; d[1] += h3; d[2] += h5; d[3] += r; d[4] += 1
+            csv_w.writerow([family, pos, true_next] + preds5 +
+                           [int(h1), int(h3), int(h5)])
 
         if progress_cb and (i + 1) % 20 == 0:
             progress_cb(i + 1, len(test_seqs))
 
+    pred_rows_csv = csv_buf.getvalue()
+
     if total == 0:
-        return "No evaluation positions found."
+        return "No evaluation positions found.", ""
 
     lines = [
         "=" * 55,
@@ -833,7 +842,7 @@ def self_benchmark_task1(model: ModelInterface,
             f"Top-3:{_safe_div(t3,n):.3f}  Top-5:{_safe_div(t5,n):.3f}  "
             f"MRR:{_safe_div(r,n):.3f}  (n={n})"
         )
-    return "\n".join(lines)
+    return "\n".join(lines), pred_rows_csv
 
 
 def self_benchmark_task2(model: ModelInterface,
@@ -848,6 +857,11 @@ def self_benchmark_task2(model: ModelInterface,
 
     ned_all = []; exact_all = []; tacc_all = []; bacc_all = []
     by_frac: dict[str, dict] = {}
+    csv_buf = io.StringIO()
+    csv_w = csv.writer(csv_buf)
+    csv_w.writerow(["FAMILY", "CUT", "PREFIX_LEN", "REF_LEN", "PRED_LEN",
+                    "NED", "EXACT", "TOKEN_ACC", "BLOCK_ACC",
+                    "PREDICTED_SEQUENCE", "REF_SEQUENCE"])
 
     for i, (family, steps) in enumerate(test_seqs):
         n = len(steps)
@@ -872,12 +886,17 @@ def self_benchmark_task2(model: ModelInterface,
             by_frac.setdefault(key, {"ned": [], "exact": [], "tacc": [], "bacc": []})
             by_frac[key]["ned"].append(ned);   by_frac[key]["exact"].append(exact)
             by_frac[key]["tacc"].append(tacc); by_frac[key]["bacc"].append(bacc)
+            csv_w.writerow([family, f"{int(frac*100)}%", cut, len(ref), len(predicted),
+                            f"{ned:.4f}", int(exact), f"{tacc:.4f}", f"{bacc:.4f}",
+                            "|".join(predicted), "|".join(ref)])
 
         if progress_cb and (i + 1) % 10 == 0:
             progress_cb(i + 1, len(test_seqs))
 
     if not ned_all:
-        return "No evaluation examples found."
+        return "No evaluation examples found.", ""
+
+    pred_rows_csv = csv_buf.getvalue()
 
     def mean(lst): return sum(lst) / len(lst) if lst else float("nan")
 
@@ -897,4 +916,4 @@ def self_benchmark_task2(model: ModelInterface,
             f"  {frac}  NED:{mean(d['ned']):.3f}  Exact:{mean(d['exact']):.3f}  "
             f"TokAcc:{mean(d['tacc']):.3f}  BlkAcc:{mean(d['bacc']):.3f}"
         )
-    return "\n".join(lines)
+    return "\n".join(lines), pred_rows_csv

@@ -211,32 +211,9 @@ def run_benchmark(model_name: str, task: str) -> tuple[str, str]:
     return "Unknown task.", ""
 
 
-def run_self_benchmark(model_name: str, task: str, n_seqs: int) -> str:
-    if not model_name:
-        return "No model selected."
-    model = _get_model(model_name)
-    log = []
-
-    def progress(done, total):
-        log.append(f"  {done}/{total} sequences processed...")
-
-    if "Task 1" in task:
-        return self_benchmark_task1(model, progress_cb=progress,
-                                    max_per_family=n_seqs) + "\n\n" + "\n".join(log)
-    elif "Task 2" in task:
-        return self_benchmark_task2(model, progress_cb=progress,
-                                    max_per_family=n_seqs) + "\n\n" + "\n".join(log)
-    return "Self-benchmark not available for Task 3 (uses rule-checker by definition)."
-
-
-def run_custom_benchmark(model_name: str, task: str, file_path: str) -> tuple[str, str]:
+def run_self_benchmark(model_name: str, task: str, n_seqs: int) -> tuple[str, str]:
     if not model_name:
         return "No model selected.", ""
-    if not file_path:
-        return "No file uploaded.", ""
-    path = Path(file_path)
-    if not path.exists():
-        return f"File not found: {file_path}", ""
     model = _get_model(model_name)
     log = []
 
@@ -244,15 +221,16 @@ def run_custom_benchmark(model_name: str, task: str, file_path: str) -> tuple[st
         log.append(f"  {done}/{total} sequences processed...")
 
     if "Task 1" in task:
-        pred_csv, scores = run_task1(model, path, progress_cb=progress)
+        scores, pred_csv = self_benchmark_task1(model, progress_cb=progress,
+                                                max_per_family=n_seqs)
     elif "Task 2" in task:
-        pred_csv, scores = run_task2(model, path, progress_cb=progress)
-    elif "Task 3" in task:
-        pred_csv, scores = run_task3(model, path, progress_cb=progress)
+        scores, pred_csv = self_benchmark_task2(model, progress_cb=progress,
+                                                max_per_family=n_seqs)
     else:
-        return "Unknown task.", ""
+        return "Self-benchmark not available for Task 3 (uses rule-checker by definition).", ""
 
     return scores + "\n\n" + "\n".join(log), pred_csv
+
 
 
 def save_predictions(pred_csv: str, task: str) -> str:
@@ -337,10 +315,19 @@ def build_app():
             self_scores_box = gr.Textbox(
                 label="Results", lines=20, max_lines=40, interactive=False,
             )
+            with gr.Row():
+                self_pred_state = gr.State("")
+                self_dl_btn = gr.Button("Download Predictions CSV", scale=1)
+                self_dl_file = gr.File(label="Predictions", scale=3)
             self_run_btn.click(
                 fn=run_self_benchmark,
                 inputs=[self_model_dd, self_task_dd, n_seqs_slider],
-                outputs=[self_scores_box],
+                outputs=[self_scores_box, self_pred_state],
+            )
+            self_dl_btn.click(
+                fn=save_predictions,
+                inputs=[self_pred_state, self_task_dd],
+                outputs=[self_dl_file],
             )
 
         # ── Tab 2: Official ──────────────────────────────────────────────────
