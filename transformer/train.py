@@ -161,11 +161,15 @@ def train(args):
 
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     total_steps = len(train_loader) * args.epochs
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=total_steps // 10,
-        num_training_steps=total_steps,
-    )
+    if args.cosine_lr:
+        from torch.optim.lr_scheduler import CosineAnnealingLR
+        scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=args.lr * 0.1)
+    else:
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=total_steps // 10,
+            num_training_steps=total_steps,
+        )
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -243,6 +247,8 @@ def main():
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--max_samples", type=int, default=0,
                         help="Limit training to first N samples (0 = use all)")
+    parser.add_argument("--cosine_lr", action="store_true",
+                        help="Use cosine LR schedule instead of linear warmup")
     args = parser.parse_args()
     train(args)
 

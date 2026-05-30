@@ -20,8 +20,10 @@ pixi run python train.py \
     --out_dir $HOME/zeroonehackrit/checkpoints_tiny10 \
     --epochs 10 \
     --batch_size 32 \
+    --lr 1e-4 \
     --max_input_len 256 \
     --max_output_len 256 \
-    --max_samples 20000 \
-    --log_every 25 \
+    --max_samples 50000 \
+    --log_every 50 \
+    --cosine_lr \
     --workers 4
