@@ -8,6 +8,8 @@ Trains a small GPT on augmented token streams where [BLK:X] boundary tokens
 mark block transitions. Saves checkpoint + vocab to model_out/.
 """
 
+import argparse
+import csv
 import json
 import random
 from pathlib import Path
@@ -85,7 +87,21 @@ def collate(batch):
 # ── Training ──────────────────────────────────────────────────────────────────
 
 
-def train():
+def _save_sequences(dataset: "FabDataset", vocab: dict[str, int], path: Path) -> None:
+    id2tok = {v: k for k, v in vocab.items()}
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["SEQUENCE_ID", "STEP"])
+        for i, ids in enumerate(dataset.seqs, start=1):
+            seq_id = f"seq_{i:05d}"
+            for tok_id in ids:
+                tok = id2tok[tok_id]
+                if tok in ("<bos>", "<eos>", "<pad>"):
+                    continue
+                writer.writerow([seq_id, tok])
+
+
+def train(save_data: bool = False):
     OUT_DIR.mkdir(exist_ok=True)
 
     print("Building vocab …")
@@ -101,6 +117,10 @@ def train():
         dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate
     )
     print(f"  {len(dataset)} sequences, {len(loader)} batches/epoch")
+
+    if save_data:
+        _save_sequences(dataset, vocab, OUT_DIR / "training_sequences.csv")
+        print(f"  training sequences saved to {OUT_DIR}/training_sequences.csv")
 
     cfg = GPT2Config(
         vocab_size=len(vocab),
@@ -202,5 +222,10 @@ def demo(model, vocab, id2tok):
 
 
 if __name__ == "__main__":
-    model, vocab, id2tok = train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--save-data", action="store_true",
+                        help="Save generated training sequences to model_out/training_sequences.csv")
+    args = parser.parse_args()
+
+    model, vocab, id2tok = train(save_data=args.save_data)
     demo(model, vocab, id2tok)
