@@ -56,36 +56,79 @@ def complete(model, vocab, id2tok, prefix: list[str], max_new: int = 200) -> lis
     return generated
 
 
+# ── Edit distance + alignment ─────────────────────────────────────────────────
+
+def edit_distance(a: list[str], b: list[str]) -> int:
+    """Levenshtein distance between two token lists."""
+    m, n = len(a), len(b)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev, dp[0] = dp[0], i
+        for j in range(1, n + 1):
+            prev, dp[j] = dp[j], prev if a[i-1] == b[j-1] else 1 + min(prev, dp[j], dp[j-1])
+    return dp[n]
+
+
+def align(pred: list[str], gt: list[str]) -> list[tuple[str, str]]:
+    """Needleman-Wunsch alignment — returns (pred_tok, gt_tok) pairs with gaps as '—'."""
+    m, n = len(pred), len(gt)
+    GAP = -1
+    MATCH, MISMATCH, INDEL = 2, -1, -1
+
+    score = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(m + 1): score[i][0] = i * INDEL
+    for j in range(n + 1): score[0][j] = j * INDEL
+
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            s = MATCH if pred[i-1] == gt[j-1] else MISMATCH
+            score[i][j] = max(score[i-1][j-1] + s, score[i-1][j] + INDEL, score[i][j-1] + INDEL)
+
+    aligned = []
+    i, j = m, n
+    while i > 0 or j > 0:
+        if i > 0 and j > 0:
+            s = MATCH if pred[i-1] == gt[j-1] else MISMATCH
+            if score[i][j] == score[i-1][j-1] + s:
+                aligned.append((pred[i-1], gt[j-1])); i -= 1; j -= 1; continue
+        if i > 0 and (j == 0 or score[i][j] == score[i-1][j] + INDEL):
+            aligned.append((pred[i-1], "—")); i -= 1
+        else:
+            aligned.append(("—", gt[j-1])); j -= 1
+
+    return list(reversed(aligned))
+
+
 # ── Comparison printer ────────────────────────────────────────────────────────
 
 def compare(prefix: list[str], predicted: list[str], ground_truth: list[str], label: str = ""):
-    # strip BLK tokens for validator
-    all_steps = [t for t in prefix + predicted if not t.startswith("[BLK:")]
+    all_steps  = [t for t in prefix + predicted if not t.startswith("[BLK:")]
     violations = validate_sequence(all_steps)
 
-    # token accuracy (step tokens only, ignoring BLK boundaries)
-    pred_steps = [t for t in predicted   if not t.startswith("[BLK:")]
+    pred_steps = [t for t in predicted    if not t.startswith("[BLK:")]
     gt_steps   = [t for t in ground_truth if not t.startswith("[BLK:")]
-    n = min(len(pred_steps), len(gt_steps))
-    matches = sum(p == g for p, g in zip(pred_steps[:n], gt_steps[:n]))
+
+    ed       = edit_distance(pred_steps, gt_steps)
+    max_len  = max(len(pred_steps), len(gt_steps))
+    norm_ed  = ed / max_len if max_len else 0.0
+    aligned  = align(pred_steps, gt_steps)
+    matches  = sum(1 for p, g in aligned if p == g and p != "—")
 
     sep = "─" * 70
     print(f"\n{sep}")
     if label:
         print(f"  {label}")
-    print(f"  prefix   : {len(prefix)} tokens  |  to predict: {len(ground_truth)} tokens")
-    print(f"  validator: {'✓ OK' if not violations else '✗ ' + violations[0].rule}")
-    print(f"  token acc: {matches}/{n} = {matches/n:.1%}  (step tokens only)")
+    print(f"  prefix     : {len(prefix)} tokens  |  to predict: {len(gt_steps)} steps")
+    print(f"  validator  : {'✓ OK' if not violations else '✗ ' + violations[0].rule}")
+    print(f"  edit dist  : {ed}  (normalised: {norm_ed:.3f}, lower=better)")
+    print(f"  aligned acc: {matches}/{len(gt_steps)} = {matches/len(gt_steps):.1%}")
     print(sep)
 
-    # side-by-side table
     print(f"  {'#':<4}  {'PREDICTED':<45}  GROUND TRUTH")
     print(f"  {'─'*4}  {'─'*45}  {'─'*45}")
-    for i in range(max(len(pred_steps), len(gt_steps))):
-        p = pred_steps[i] if i < len(pred_steps) else "—"
-        g = gt_steps[i]   if i < len(gt_steps)   else "—"
+    for i, (p, g) in enumerate(aligned, 1):
         mark = "  " if p == g else "≠ "
-        print(f"  {mark}{i+1:<3}  {p:<45}  {g}")
+        print(f"  {mark}{i:<3}  {p:<45}  {g}")
     print()
 
 
