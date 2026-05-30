@@ -2,14 +2,14 @@
 
 Four models for learning and benchmarking semiconductor fab process sequences (next-step prediction, sequence completion, anomaly detection).
 
-**Models:** `markov` · `seq2seq` · `hierarchical` · `transformer`
+**Models:** `markov` · `lcm` · `hierarchical` · `transformer`
 
 ## Model checkpoints
 
 | Model | Checkpoint location | Notes |
 |---|---|---|
 | `markov` | `models/markov/markov.json` | We used this as a baseline — transition counts from training data |
-| `seq2seq` | `models/seq2seq/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
+| `lcm` | `models/lcm/.save/best_100000_unfinished.pt` | GRU encoder-decoder with Bahdanau attention |
 | `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
 | `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch |
 
@@ -44,9 +44,9 @@ Everything works from the terminal. Source into your virtual environment and run
 
 **Generate submission CSVs:**
 ```bash
-python -m models.infer --model seq2seq --task 1 --output task1_predictions.csv
-python -m models.infer --model seq2seq --task 2 --output task2_predictions.csv
-python -m models.infer --model seq2seq --task 3 --output task3_predictions.csv
+python -m models.infer --model lcm --task 1 --output task1_predictions.csv
+python -m models.infer --model lcm --task 2 --output task2_predictions.csv
+python -m models.infer --model lcm --task 3 --output task3_predictions.csv
 ```
 
 **Self-benchmark (scored locally against extended CSVs):**
@@ -58,7 +58,7 @@ python -m models.infer --model hierarchical --task self2 --n-seqs 15
 **Single sequence:**
 ```bash
 python -m models.infer --model markov --next "RECEIVE WAFER LOT|LOT IDENTIFICATION|INITIAL WAFER INSPECTION"
-python -m models.infer --model seq2seq --complete "RECEIVE WAFER LOT|LOT IDENTIFICATION"
+python -m models.infer --model lcm --complete "RECEIVE WAFER LOT|LOT IDENTIFICATION"
 ```
 
 **Score Task 3 locally** (Tasks 1 & 2 need the organiser's ground-truth file):

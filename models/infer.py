@@ -20,17 +20,18 @@ from pathlib import Path
 # ── Path helpers ──────────────────────────────────────────────────────────────
 
 _ROOT       = Path(__file__).parent.parent
-_SEQ2SEQ    = Path(__file__).parent / "seq2seq"
+_LCM        = Path(__file__).parent / "lcm"
 _MARKOV_DIR = Path(__file__).parent / "markov"
 _HIER_DIR   = Path(__file__).parent / "hierarchical"
+_HIER2_DIR  = Path(__file__).parent / "hierarchical2"
 _TRANS_DIR  = Path(__file__).parent / "transformer"
 _DATA_GEN   = _ROOT / "data" / "gen"
 
-for _p in (_SEQ2SEQ, _MARKOV_DIR, _HIER_DIR, _TRANS_DIR, _DATA_GEN):
+for _p in (_LCM, _MARKOV_DIR, _HIER_DIR, _HIER2_DIR, _TRANS_DIR, _DATA_GEN):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from validator import validate_sequence  # from seq2seq/
+from validator import validate_sequence  # from lcm/
 
 
 # ── Base class ────────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ class MarkovAdapter(ModelInterface):
 # ── Seq2Seq adapter ───────────────────────────────────────────────────────────
 
 class Seq2SeqAdapter(ModelInterface):
-    name = "seq2seq"
+    name = "lcm"
 
     def __init__(self, checkpoint: Path):
         import torch
@@ -158,6 +159,78 @@ class Seq2SeqAdapter(ModelInterface):
         return result
 
 
+# ── Block label inference (for HierarchicalAdapter prefix augmentation) ──────
+
+def _infer_block(step: str) -> str:
+    """Map a raw process step string to its most likely hierarchical block label."""
+    s = step.upper()
+    if s in ("SHIP LOT", "LOT RELEASE", "FINAL LOT RELEASE", "PACKAGE PREPARATION"):
+        return "SUFFIX"
+    if any(k in s for k in ("PARAMETRIC TEST", "ELECTRICAL PARAMETRIC", "LEAKAGE TEST",
+                              "BREAKDOWN VOLTAGE", "SWITCHING TEST", "WAFER SORT TEST",
+                              "YIELD ANALYSIS", "THRESHOLD VOLTAGE")):
+        return "TEST_SUITE"
+    if s.startswith("FINAL ") or s in ("FRONTSIDE CLEAN FINAL", "BACKSIDE CLEAN FINAL",
+                                        "FINAL ELECTRICAL TEST PREP"):
+        return "FINAL_INSP"
+    if "BACKSIDE" in s or "GRIND" in s or s in ("MEASURE WAFER THICKNESS", "MEASURE THICKNESS"):
+        return "BACKSIDE"
+    if "PASSIVATION" in s:
+        return "PASSIVATION"
+    if any(k in s for k in ("DEPOSIT METAL", "DEPOSIT TOP METAL", "ANNEAL METAL",
+                              "METAL ETCH", "FILL VIA", "CMP METAL", "MEASURE METAL",
+                              "MEASURE LINE WIDTH", "CMP VIA FILL", "MEASURE VIA RESISTANCE",
+                              "MEASURE CONTACT RESISTANCE")):
+        return "METAL"
+    if any(k in s for k in ("VIA", "TUNGSTEN", "BARRIER METAL", "METAL SEED",
+                              "DIELECTRIC ETCH VIA")):
+        return "VIA"
+    if any(k in s for k in ("INTERLEVEL DIELECTRIC", "INTERLAYER DIELECTRIC",
+                              "DENSIFY", "CMP DIELECTRIC", "CMP INTERLAYER",
+                              "MEASURE PLANARITY", "MEASURE SURFACE PLANARITY",
+                              "MEASURE DIELECTRIC THICKNESS", "MEASURE FILM THICKNESS")):
+        return "ILD"
+    if any(k in s for k in ("SPIN COAT", "SOFT BAKE", "HARD BAKE", "ALIGN MASK",
+                              "EXPOSE LITHO", "DEVELOP PHOTORESIST", "DEVELOP PAD",
+                              "POST EXPOSE BAKE", "STRIP PHOTORESIST", "STRIP RESIST",
+                              "IMPLANT", "POLYSILICON ETCH", "OXIDE ETCH DRY",
+                              "FIELD OXIDE ETCH", "ETCH SILICON", "FIELD PATTERN",
+                              "P BODY WINDOW", "VIA OPENING INSPECTION", "VIA INSPECTION",
+                              "POLY PATTERN", "METAL PATTERN", "INSPECT PATTERN",
+                              "PATTERN INSPECTION", "MEASURE OPENING CD", "MEASURE GATE CD",
+                              "MEASURE CD LEVEL", "MEASURE JUNCTION", "MEASURE SHEET",
+                              "MEASURE DEVICE PARAMETER", "RAPID THERMAL ANNEAL",
+                              "DRIVE IN DIFFUSION", "PRE ANNEAL CHECK", "LIGHT ANNEAL",
+                              "ANNEAL DIELECTRIC", "MEASURE OXIDE QUALITY")):
+        return "PROCESS_CYCLES"
+    if any(k in s for k in ("GATE OXIDE", "THERMAL OXIDATION", "DEPOSIT POLYSILICON",
+                              "POLYSILICON ANNEAL", "ANNEAL POLYSILICON",
+                              "MEASURE POLY THICKNESS")):
+        return "FIRST_OX"
+    if any(k in s for k in ("EPITAXIAL", "SUBSTRATE CHECK", "EPITAXY PREP",
+                              "EPITAXIAL LAYER PREP", "EPITAXIAL REWORK CHECK",
+                              "DEPOSIT FIELD OXIDE", "DEPOSIT PAD OXIDE",
+                              "SURFACE PREP FOR DEPOSITION", "OXIDE STRIP",
+                              "ANNEAL OXIDE", "WAFER SURFACE CLEAN")):
+        return "FAMILY_PREP"
+    if any(k in s for k in ("PRE CLEAN WAFER", "BACKSIDE CLEAN", "FRONTSIDE CLEAN",
+                              "WET CLEAN RCA", "RCA CLEAN", "HF DIP", "DRY WAFER",
+                              "WAFER CLEAN", "MEASURE BACKSIDE ROUGHNESS",
+                              "WAFER CLEAN PRE-GRIND", "GRINDING WAFER BACKSIDE",
+                              "ETCH WET BACKSIDE", "RINSE WET WAFER_EDGE",
+                              "DRY WAFER BACKSIDE", "MEASURE OXIDE THICKNESS")):
+        return "PRE_CLEAN"
+    if any(k in s for k in ("MEASURE INITIAL", "MEASURE SURFACE PARTICLES",
+                              "MEASURE SURFACE DEFECTS", "MEASURE RESISTIVITY",
+                              "WAFER CLEAN PRE PROCESS", "PRE CLEAN INSPECTION",
+                              "INITIAL WAFER INSPECTION", "MEASURE EPITAXY THICKNESS",
+                              "MEASURE GEOMETRY", "MEASURE SURFACE ROUGHNESS")):
+        return "INIT_MEAS"
+    if s in ("RECEIVE WAFER LOT", "LOT IDENTIFICATION"):
+        return "PREFIX"
+    return "PROCESS_CYCLES"  # safe default for mid-sequence steps
+
+
 # ── Hierarchical (GPT-2 + block tokens) adapter ───────────────────────────────
 
 class HierarchicalAdapter(ModelInterface):
@@ -175,14 +248,22 @@ class HierarchicalAdapter(ModelInterface):
         self._BOS = "<bos>"
         self._EOS = "<eos>"
         self._PAD = "<pad>"
-        # read max context from the saved config (n_positions=256 for this checkpoint)
         cfg = json.loads((model_dir / "config.json").read_text())
         self._max_len = cfg.get("n_positions", 256)
 
     def _ids(self, prefix: list[str]) -> list[int]:
-        ids = ([self._vocab[self._BOS]] +
-               [self._vocab.get(t, self._vocab[self._PAD]) for t in prefix])
-        # keep the most recent context when prefix exceeds the trained context window
+        """Encode prefix with [BLK:X] tokens re-injected at block boundaries,
+        matching the augmented token format the model was trained on."""
+        ids = [self._vocab[self._BOS]]
+        prev_block = None
+        for step in prefix:
+            block = _infer_block(step)
+            if block != prev_block:
+                blk_tok = f"[BLK:{block}]"
+                if blk_tok in self._vocab:
+                    ids.append(self._vocab[blk_tok])
+                prev_block = block
+            ids.append(self._vocab.get(step, self._vocab[self._PAD]))
         return ids[-self._max_len:]
 
     def predict_next(self, prefix: list[str], top_k: int = 5) -> list[str]:
@@ -198,11 +279,12 @@ class HierarchicalAdapter(ModelInterface):
         import torch
         eos_id = self._vocab[self._EOS]
         ids = self._ids(prefix)
+        # only mask PAD and BOS — EOS must remain predictable so the loop
+        # can terminate naturally (masking EOS breaks the break condition)
+        _skip = {self._vocab[self._PAD], self._vocab[self._BOS]}
         result = []
-        _skip = {self._vocab[t] for t in (self._PAD, self._BOS, self._EOS)}
         with torch.no_grad():
             for _ in range(max_steps):
-                # slide the window if we hit the context limit
                 x = torch.tensor([ids[-self._max_len:]], dtype=torch.long, device=self._dev)
                 logits = self._model(x).logits[0, -1]
                 for idx in _skip:
@@ -340,17 +422,19 @@ class TransformerAdapter(ModelInterface):
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 _DEFAULT_PATHS = {
-    "markov":       _MARKOV_DIR / "markov.json",
-    "seq2seq":      _SEQ2SEQ / ".save" / "best_100000_unfinished.pt",
-    "hierarchical": _HIER_DIR / "model_out",
-    "transformer":  _TRANS_DIR / "gpt_ckpt.pt",
+    "markov":        _MARKOV_DIR / "markov.json",
+    "lcm":           _LCM / ".save" / "best_100000_unfinished.pt",
+    "hierarchical":  _HIER_DIR / "model_out",
+    "hierarchical2": _HIER2_DIR / "model_out",
+    "transformer":   _TRANS_DIR / "gpt_ckpt.pt",
 }
 
 _ADAPTER_CLS = {
-    "markov":      MarkovAdapter,
-    "seq2seq":     Seq2SeqAdapter,
-    "hierarchical": HierarchicalAdapter,
-    "transformer": TransformerAdapter,
+    "markov":        MarkovAdapter,
+    "lcm":           Seq2SeqAdapter,
+    "hierarchical":  HierarchicalAdapter,
+    "hierarchical2": HierarchicalAdapter,
+    "transformer":   TransformerAdapter,
 }
 
 
@@ -934,9 +1018,9 @@ if __name__ == "__main__":
         epilog="""
 examples:
   # generate submission CSVs for all three tasks
-  python -m models.infer --model seq2seq --task 1 --output task1_predictions.csv
-  python -m models.infer --model seq2seq --task 2 --output task2_predictions.csv
-  python -m models.infer --model seq2seq --task 3 --output task3_predictions.csv
+  python -m models.infer --model lcm --task 1 --output task1_predictions.csv
+  python -m models.infer --model lcm --task 2 --output task2_predictions.csv
+  python -m models.infer --model lcm --task 3 --output task3_predictions.csv
 
   # self-benchmark (scored locally against extended CSVs)
   python -m models.infer --model hierarchical --task self1
@@ -950,7 +1034,7 @@ examples:
         """,
     )
     parser.add_argument("--model", required=True,
-                        choices=["markov", "seq2seq", "hierarchical", "transformer"],
+                        choices=["markov", "lcm", "hierarchical", "hierarchical2", "transformer"],
                         help="Model to use")
     parser.add_argument("--task", choices=["1", "2", "3", "self1", "self2"],
                         help="Task to run (1=next-step, 2=completion, 3=anomaly, self1/self2=self-benchmark)")

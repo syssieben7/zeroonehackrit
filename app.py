@@ -25,7 +25,7 @@ from models.infer import (
     self_benchmark_task1,
     self_benchmark_task2,
 )
-from models.seq2seq.validator import validate_sequence
+from models.lcm.validator import validate_sequence
 
 # ---------------------------------------------------------------------------
 # Paths
