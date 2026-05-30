@@ -31,9 +31,11 @@ from transformers import GPT2Config, GPT2LMHeadModel
 
 FAMILIES = ["mosfet", "igbt", "ic"]
 N_PER_FAMILY = 10000
-EPOCHS = 50
+EPOCHS = 100
 BATCH_SIZE = 64
 LR = 3e-4
+VAL_FRACTION = 0.1
+EARLY_STOP_PATIENCE = 8
 OUT_DIR = Path("model_out")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -113,10 +115,7 @@ def train(save_data: bool = False):
 
     print(f"Generating {N_PER_FAMILY * len(FAMILIES)} training sequences …")
     dataset = FabDataset(vocab, n_per_family=N_PER_FAMILY, seed=42)
-    loader = DataLoader(
-        dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate
-    )
-    print(f"  {len(dataset)} sequences, {len(loader)} batches/epoch")
+    print(f"  {len(dataset)} sequences total")
 
     if save_data:
         _save_sequences(dataset, vocab, OUT_DIR / "training_sequences.csv")
@@ -124,7 +123,7 @@ def train(save_data: bool = False):
 
     cfg = GPT2Config(
         vocab_size=len(vocab),
-        n_positions=256,
+        n_positions=512,
         n_embd=512,
         n_layer=6,
         n_head=8,
@@ -140,30 +139,85 @@ def train(save_data: bool = False):
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  model: {n_params:,} params  device: {DEVICE}")
 
+    # ── Train / val split ─────────────────────────────────────────────────────
+    n_val = max(1, int(len(dataset) * VAL_FRACTION))
+    n_train = len(dataset) - n_val
+    train_ds, val_ds = torch.utils.data.random_split(
+        dataset, [n_train, n_val],
+        generator=torch.Generator().manual_seed(0),
+    )
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,
+                              collate_fn=collate)
+    val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False,
+                              collate_fn=collate)
+    print(f"  train={n_train}  val={n_val}")
+
     opt = torch.optim.AdamW(model.parameters(), lr=LR)
+    pad_id = vocab[PAD]
+
+    best_val_loss = float("inf")
+    patience_counter = 0
 
     for epoch in range(1, EPOCHS + 1):
+        # ── train ─────────────────────────────────────────────────────────────
         model.train()
-        total_loss = 0.0
-        for batch in loader:
+        train_loss = 0.0
+        for batch in train_loader:
             batch = batch.to(DEVICE)
             inp, tgt = batch[:, :-1], batch[:, 1:]
             logits = model(inp).logits
+            # mask PAD from the output distribution so the model never learns
+            # to predict it as a real next token
+            logits[:, :, pad_id] = float("-inf")
             loss = F.cross_entropy(
                 logits.reshape(-1, len(vocab)),
                 tgt.reshape(-1),
-                ignore_index=vocab[PAD],
+                ignore_index=pad_id,
             )
             opt.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
-            total_loss += loss.item()
-        print(f"  epoch {epoch:>2}/{EPOCHS}  loss={total_loss / len(loader):.4f}")
+            train_loss += loss.item()
 
-    model.save_pretrained(OUT_DIR)
-    cfg.save_pretrained(OUT_DIR)
-    print(f"\nCheckpoint saved to {OUT_DIR}/")
+        # ── validate ──────────────────────────────────────────────────────────
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                batch = batch.to(DEVICE)
+                inp, tgt = batch[:, :-1], batch[:, 1:]
+                logits = model(inp).logits
+                logits[:, :, pad_id] = float("-inf")
+                val_loss += F.cross_entropy(
+                    logits.reshape(-1, len(vocab)),
+                    tgt.reshape(-1),
+                    ignore_index=pad_id,
+                ).item()
+
+        train_loss /= len(train_loader)
+        val_loss   /= len(val_loader)
+        improved = val_loss < best_val_loss
+
+        if improved:
+            best_val_loss = val_loss
+            patience_counter = 0
+            model.save_pretrained(OUT_DIR)
+            cfg.save_pretrained(OUT_DIR)
+
+        marker = " ✓" if improved else f" (no improvement {patience_counter + 1}/{EARLY_STOP_PATIENCE})"
+        print(f"  epoch {epoch:>3}/{EPOCHS}  "
+              f"train={train_loss:.4f}  val={val_loss:.4f}{marker}")
+
+        if not improved:
+            patience_counter += 1
+            if patience_counter >= EARLY_STOP_PATIENCE:
+                print(f"\nEarly stopping — val loss hasn't improved for {EARLY_STOP_PATIENCE} epochs.")
+                break
+
+    print(f"\nBest checkpoint (val_loss={best_val_loss:.4f}) saved to {OUT_DIR}/")
+    # reload the best weights for the demo
+    model = GPT2LMHeadModel.from_pretrained(OUT_DIR).to(DEVICE)
     return model, vocab, id2tok
 
 
