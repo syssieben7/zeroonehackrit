@@ -132,9 +132,11 @@ def predict_completion(
     with torch.no_grad():
         output = model.generate(
             **enc,
-            max_new_tokens=MAX_OUTPUT,
+            max_new_tokens=400,
             num_beams=4,
             early_stopping=True,
+            no_repeat_ngram_size=4,
+            repetition_penalty=1.5,
         )
 
     decoded = tokenizer.decode(output[0], skip_special_tokens=True)
