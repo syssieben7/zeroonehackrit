@@ -3,11 +3,13 @@
 #SBATCH --reservation=s_tra_ncc
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=1
-#SBATCH --mem=10GB
-#SBATCH --cpus-per-task=2
-#SBATCH --time=01:00:00
-#SBATCH --job-name=hierarchical_fab_gpt
-#SBATCH --output=train_%j.log
+#SBATCH --gpus-per-task=2
+#SBATCH --mem=240GB
+#SBATCH --cpus-per-task=16
+#SBATCH --time=04:00:00
+#SBATCH --account=EUHPC_D30_031
+#SBATCH --job-name=zeronehack-train
+#SBATCH --output=%j.out
+#SBATCH --error=%j.err
 
 pixi run train
