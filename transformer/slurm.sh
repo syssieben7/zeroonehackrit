@@ -6,7 +6,7 @@
 #SBATCH --gpus-per-task=2
 #SBATCH --mem=240GB
 #SBATCH --cpus-per-task=16
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --account=EUHPC_D30_031
 #SBATCH --job-name=zeronehack-train
 #SBATCH --output=%j.out
@@ -22,4 +22,5 @@ pixi run python train.py \
     --batch_size 16 \
     --max_input_len 512 \
     --max_output_len 512 \
+    --max_samples 50000 \
     --workers 4
