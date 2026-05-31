@@ -72,9 +72,9 @@ python app.py
 | Model | Top-1 | Top-3 | Top-5 | MRR |
 |-------|-------|-------|-------|-----|
 | Markov (1st order) | 0.578 | 0.752 | 0.820 | 0.679 |
-| GPT (5M, 8 epochs) | 0.748 | **1.000** | **1.000** | **0.871** |
+| GPT (5M, 8 epochs) | **0.748** | **1.000** | **1.000** | **0.871** |
 | LCM (Seq2Seq) | 0.170 | 0.267 | 0.340 | 0.231 |
-| Hierarchical GPT-2 | **0.728** | 0.952 | 0.971 | 0.841 |
+| Hierarchical GPT-2 | 0.728 | 0.952 | 0.971 | 0.841 |
 
 ### Task 2 — Sequence Completion
 
