@@ -73,7 +73,7 @@ python app.py
 |-------|-------|-------|-------|-----|
 | Markov (1st order) | 0.578 | 0.752 | 0.820 | 0.679 |
 | GPT (5M, 8 epochs) | **0.748** | **1.000** | **1.000** | **0.871** |
-| LCM (Seq2Seq) | 0.170 | 0.267 | 0.340 | 0.231 |
+| LCM (Seq2Seq) | 0.680 | 0.840 | 0.854 | 0.760 |
 | Hierarchical GPT-2 | 0.728 | 0.952 | 0.971 | 0.841 |
 
 ### Task 2 — Sequence Completion
@@ -82,7 +82,7 @@ python app.py
 |-------|-------------|-------------|----------------|----------------|
 | Markov (1st order) | 0.961 | 0.000 | 0.065 | 0.226 |
 | GPT (5M, 8 epochs) | 0.245 | 0.000 | 0.426 | 0.693 |
-| LCM (Seq2Seq) | 0.352 | 0.000 | 0.229 | 0.525 |
+| LCM (Seq2Seq) | 0.842 | 0.000 | 0.352 | 0.720 |
 | Hierarchical GPT-2 | **0.217** | 0.000 | **0.458** | **0.731** |
 
 ### Task 3 — Anomaly Detection
@@ -91,7 +91,7 @@ python app.py
 |-------|----------|-----------|--------|------|---------|
 | Markov (1st order) | 0.833 | 1.000 | 0.667 | 0.800 | 0.833 |
 | GPT (5M, 8 epochs) | 0.833 | 1.000 | 0.667 | 0.800 | **1.000** |
-| LCM (Seq2Seq) | 0.833 | 1.000 | 0.667 | 0.800 | 0.833 |
+| LCM (Seq2Seq) | 0.833 | 1.000 | 0.667 | 0.800 | 0.302 |
 | Hierarchical GPT-2 | 0.833 | 1.000 | 0.667 | 0.800 | 0.833 |
 
 Rule-based validator with model confidence hybrid scoring. Deterministic rules catch structural violations (missing cleans, forbidden orderings); model prediction error flags statistical anomalies.

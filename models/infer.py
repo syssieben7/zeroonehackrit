@@ -158,6 +158,87 @@ class Seq2SeqAdapter(ModelInterface):
         return result
 
 
+# ── ProcessLCM adapter ────────────────────────────────────────────────────────
+
+class ProcessLCMAdapter(ModelInterface):
+    name = "lcm"
+
+    def __init__(self, checkpoint: Path):
+        import torch
+        from lcm_model import ProcessLCM
+
+        self._dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        ckpt = torch.load(str(checkpoint), map_location=self._dev, weights_only=False)
+        args = ckpt["args"]
+
+        self._itos = ckpt["vocab_itos"]
+        self._stoi = ckpt["vocab_stoi"]
+        V = len(self._itos)
+
+        self._model = ProcessLCM(
+            vocab_size=V,
+            embed_dim=args.get("embed_dim", 256),
+            n_heads=args.get("n_heads", 8),
+            n_layers=args.get("n_layers", 6),
+            dim_feedforward=args.get("dim_feedforward", 1024),
+            dropout=0.0,
+            max_seq_len=512,
+        ).to(self._dev)
+
+        # Filter out positional encoding buffer if size mismatches
+        state = ckpt["model_state"]
+        pe_key = "pos_encoding.pe"
+        if pe_key in state and state[pe_key].shape != self._model.pos_encoding.pe.shape:
+            del state[pe_key]
+        self._model.load_state_dict(state, strict=False)
+        self._model.eval()
+        self._torch = torch
+
+    def _encode(self, steps: list[str]) -> list[int]:
+        return [self._stoi.get(s, 0) for s in steps]
+
+    def predict_next(self, prefix: list[str], top_k: int = 5) -> list[str]:
+        ids = self._encode(prefix)
+        x = self._torch.tensor([ids], dtype=self._torch.long, device=self._dev)
+        with self._torch.no_grad():
+            top_indices, _ = self._model.predict_next_step(x, top_k=top_k)
+        results = []
+        for idx in top_indices[0].tolist():
+            if idx >= 6 and idx < len(self._itos):
+                results.append(self._itos[idx])
+        return results[:top_k]
+
+    def predict_completion(self, prefix: list[str], max_steps: int = 200) -> list[str]:
+        ids = self._encode(prefix)
+        x = self._torch.tensor([ids], dtype=self._torch.long, device=self._dev)
+        with self._torch.no_grad():
+            pred_ids = self._model.complete_sequence(x, max_len=max_steps, eos_idx=3)
+        results = []
+        for idx in pred_ids:
+            if idx >= 6 and idx < len(self._itos):
+                results.append(self._itos[idx])
+        return results
+
+    def detect_anomaly(self, sequence: list[str]) -> tuple[bool, float, str]:
+        """Use prediction error + rule checker for anomaly detection."""
+        violations = validate_sequence(sequence)
+        is_valid = len(violations) == 0
+        rule = violations[0] if violations else ""
+
+        ids = self._encode(sequence)
+        if len(ids) >= 3:
+            x = self._torch.tensor([ids], dtype=self._torch.long, device=self._dev)
+            with self._torch.no_grad():
+                errors, max_err, mean_err = self._model.anomaly_scores(x)
+            score = math.exp(-mean_err.item())
+        else:
+            score = 1.0
+
+        if not is_valid:
+            score = min(score, 0.45)
+        return is_valid, round(score, 4), rule
+
+
 # ── Block label inference (for HierarchicalAdapter prefix augmentation) ──────
 
 def _infer_block(step: str) -> str:
@@ -422,14 +503,16 @@ class TransformerAdapter(ModelInterface):
 
 _DEFAULT_PATHS = {
     "markov (baseline)": _MARKOV_DIR / "markov.json",
-    "lcm":              _LCM / ".save" / "best_100000.pt",
+    "seq2seq":           _LCM / ".save" / "gru_seq2seq.pt",
+    "lcm":              _LCM / ".save" / "best_lcm_10000.pt",
     "hierarchical":     _HIER_DIR / "model_out",
     "transformer":      _TRANS_DIR / "gpt_ckpt.pt",
 }
 
 _ADAPTER_CLS = {
     "markov (baseline)": MarkovAdapter,
-    "lcm":              Seq2SeqAdapter,
+    "seq2seq":           Seq2SeqAdapter,
+    "lcm":              ProcessLCMAdapter,
     "hierarchical":     HierarchicalAdapter,
     "transformer":      TransformerAdapter,
 }
