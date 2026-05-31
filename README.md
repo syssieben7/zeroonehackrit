@@ -55,21 +55,21 @@ Everything works from the terminal. Source into your virtual environment and run
 
 **Generate submission CSVs:**
 ```bash
-python -m models.infer --model lcm --task 1 --output task1_predictions.csv
-python -m models.infer --model lcm --task 2 --output task2_predictions.csv
-python -m models.infer --model lcm --task 3 --output task3_predictions.csv
+python -m models.infer --model transformer --task 1 --output task1_predictions.csv
+python -m models.infer --model transformer --task 2 --output task2_predictions.csv
+python -m models.infer --model transformer --task 3 --output task3_predictions.csv
 ```
 
 **Self-benchmark (scored locally against extended CSVs):**
 ```bash
-python -m models.infer --model hierarchical --task self1
-python -m models.infer --model hierarchical --task self2 --n-seqs 15
+python -m models.infer --model transformer --task self1
+python -m models.infer --model transformer --task self2 --n-seqs 15
 ```
 
 **Single sequence:**
 ```bash
-python -m models.infer --model markov --next "RECEIVE WAFER LOT|LOT IDENTIFICATION|INITIAL WAFER INSPECTION"
-python -m models.infer --model lcm --complete "RECEIVE WAFER LOT|LOT IDENTIFICATION"
+python -m models.infer --model transformer --next "RECEIVE WAFER LOT|LOT IDENTIFICATION|INITIAL WAFER INSPECTION"
+python -m models.infer --model transformer --complete "RECEIVE WAFER LOT|LOT IDENTIFICATION"
 ```
 
 **Score Task 3 locally** (Tasks 1 & 2 need the organiser's ground-truth file):
