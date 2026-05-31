@@ -9,11 +9,22 @@ Four models for learning and benchmarking semiconductor fab process sequences (n
 | Model | Checkpoint location | Notes |
 |---|---|---|
 | `markov` | `models/markov/markov.json` | We used this as a baseline — transition counts from training data |
-| `lcm` | `models/lcm/.save/best_100000_unfinished.pt` | Large Concept Model — bidirectional GRU encoder + GRU decoder with Bahdanau attention |
+| `lcm` | `hpc/scp/.save/best_lcm_10000.pt` | Large Concept Model — bidirectional GRU encoder + GRU decoder with Bahdanau attention |
 | `hierarchical` | `models/hierarchical/model_out/` | GPT-2 fine-tuned with block-boundary tokens |
 | `transformer` | `models/transformer/gpt_ckpt.pt` | Decoder-only GPT trained from scratch |
 
 Each model has its strengths and weaknesses
+
+## Submission Files
+
+Pre-generated prediction CSVs for the official evaluation:
+
+| Task | File |
+|------|------|
+| Task 1 — Next-Step | `data/participant_files/predictions/predictions_nextstep.csv` |
+| Task 2 — Completion | `data/participant_files/predictions/predictions_completion.csv` |
+| Task 3 — Anomaly | `data/participant_files/predictions/predictions_anomaly.csv` |
+
 ---
 
 ## Quick Start
@@ -23,14 +34,6 @@ pip install -r requirements.txt
 python app.py
 # → open http://127.0.0.1:7860
 ```
-
-## Running the Gradio App
-
-```bash
-python app.py
-```
-
-This launches the web interface at **http://127.0.0.1:7860**.
 
 ## Interface
 
