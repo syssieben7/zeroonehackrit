@@ -31,7 +31,7 @@ We focused on all three tasks across three product families (MOSFET, IGBT, IC), 
 - **Markov chain baseline** — first-order bigram transition counts; fast to train, establishes a lower bound (Top-1: 57.8%)
 - **Process-LCM (Large Concept Model)** — bidirectional GRU encoder + GRU decoder with Bahdanau attention, adapted from NMT; learns step embeddings in a continuous space and predicts next-step via cosine similarity against a learned codebook. Trained 10k+ steps on Leonardo.
 - **From-scratch GPT (5M params)** — decoder-only causal Transformer with family tokens and sinusoidal positional encoding; trained 8 epochs on 30k generated sequences. Best next-step model (Top-1: 74.8%, perfect Top-3/5).
-- **Hierarchical GPT-2 (18M params)** — fine-tuned with `[BLK:X]` block-boundary tokens injected into training data (PREFIX, PRE_CLEAN, PROCESS_CYCLES, etc.) so the model learns process structure at two resolutions simultaneously. 75% aligned accuracy, 100% validator pass.
+- **Hierarchical GPT-2 (18M params) (Best Performing)** — fine-tuned with `[BLK:X]` block-boundary tokens injected into training data (PREFIX, PRE_CLEAN, PROCESS_CYCLES, etc.) so the model learns process structure at two resolutions simultaneously. 75% aligned accuracy, 100% validator pass.
 - **Rule-based anomaly detection** — deterministic validator checking forbidden patterns (missing cleans, ordering violations) combined with model confidence scores for hybrid anomaly scoring.
 - **All training on CINECA Leonardo** — A100 GPUs via SLURM, pixi environment management.
 - **Training data** — 10,000 randomly generated sequences per family (MOSFET, IGBT, IC) using `data/gen/generate_sequences.py`, totalling 30,000 sequences.
