@@ -520,8 +520,6 @@ def build_app():
                 else "_none — train first_"
             )
             + missing_note
-            + "\n\n**Eval files:** "
-            + " | ".join(eval_status)
         )
 
         # ── Tab 1: Evaluate (Test Dataset) ───────────────────────────────────
