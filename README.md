@@ -21,9 +21,9 @@ Pre-generated prediction CSVs for the official evaluation:
 
 | Task | File |
 |------|------|
-| Task 1 — Next-Step | `data/participant_files/predictions/predictions_nextstep.csv` |
-| Task 2 — Completion | `data/participant_files/predictions/predictions_completion.csv` |
-| Task 3 — Anomaly | `data/participant_files/predictions/predictions_anomaly.csv` |
+| Task 1 — Next-Step | `./task1_predictions.csv` |
+| Task 2 — Completion | `./task2_predictions.csv` |
+| Task 3 — Anomaly | `./task3_predictions.csv` |
 
 ---
 
