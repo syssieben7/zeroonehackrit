@@ -2,7 +2,7 @@
 
 Four models for learning and benchmarking semiconductor fab process sequences (next-step prediction, sequence completion, anomaly detection).
 
-**Models:** `markov` · `lcm` · `hierarchical` · `transformer`
+**Models:** `markov` · `transformer` · `hierarchical` · `lcm`
 
 ## Model checkpoints
 
