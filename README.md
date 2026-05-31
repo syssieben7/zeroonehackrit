@@ -19,16 +19,24 @@ Each model has its strengths and weaknesses
 ## Quick Start
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 # → open http://127.0.0.1:7860
 ```
 
+## Running the Gradio App
+
+```bash
+python app.py
+```
+
+This launches the web interface at **http://127.0.0.1:7860**.
+
 ## Interface
 
-The app has three tabs:
+The Gradio GUI has four tabs:
+
+**Evaluate** — one-click evaluation on 30 ground-truth sequences (10 per family). Runs all three tasks and displays metrics: Top-1/3/5 Accuracy, MRR, NED, Exact Match, Token Accuracy, Block Accuracy, Precision, Recall, F1, ROC-AUC. For anomaly detection, 15 sequences are kept valid and 15 are mutated to create labelled anomalies.
 
 **Self-Benchmark** — score any model against held-out `*_extended.csv` sequences (no training-data leakage). Pick Task 1 (next-step) or Task 2 (completion), set sequences per family, hit Run. Results include Top-1/3/5, MRR, NED, Exact Match etc. Download the per-row CSV for further analysis.
 
@@ -38,7 +46,7 @@ The app has three tabs:
 
 ---
 
-## I don't like GUIs...
+## CLI Usage
 
 Everything works from the terminal. Source into your virtual environment and run the following:
 

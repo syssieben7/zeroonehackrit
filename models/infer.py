@@ -421,28 +421,46 @@ class TransformerAdapter(ModelInterface):
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 _DEFAULT_PATHS = {
-    "markov":       _MARKOV_DIR / "markov.json",
-    "lcm":          _LCM / ".save" / "best_100000_unfinished.pt",
-    "hierarchical": _HIER_DIR / "model_out",
-    "transformer":  _TRANS_DIR / "gpt_ckpt.pt",
+    "markov (baseline)": _MARKOV_DIR / "markov.json",
+    "lcm":              _LCM / ".save" / "best_100000.pt",
+    "hierarchical":     _HIER_DIR / "model_out",
+    "transformer":      _TRANS_DIR / "gpt_ckpt.pt",
 }
 
 _ADAPTER_CLS = {
-    "markov":       MarkovAdapter,
-    "lcm":          Seq2SeqAdapter,
-    "hierarchical": HierarchicalAdapter,
-    "transformer":  TransformerAdapter,
+    "markov (baseline)": MarkovAdapter,
+    "lcm":              Seq2SeqAdapter,
+    "hierarchical":     HierarchicalAdapter,
+    "transformer":      TransformerAdapter,
 }
+
+
+def _is_lfs_pointer(path: Path) -> bool:
+    """Check if a file is a git-lfs pointer instead of real content."""
+    if path.is_dir():
+        return False
+    try:
+        with open(path, "rb") as f:
+            header = f.read(40)
+        return header.startswith(b"version https://git-lfs")
+    except (OSError, IOError):
+        return False
 
 
 def load_model(name: str, path: Path = None) -> ModelInterface:
     p = path or _DEFAULT_PATHS[name]
+    if _is_lfs_pointer(p):
+        raise RuntimeError(
+            f"Checkpoint for '{name}' at {p} is a git-lfs pointer, not a real file. "
+            f"Run 'git lfs pull' or download the checkpoint manually."
+        )
     return _ADAPTER_CLS[name](p)
 
 
 def available_models() -> list[str]:
-    """Return names of models whose checkpoint/directory exists."""
-    return [name for name, path in _DEFAULT_PATHS.items() if path.exists()]
+    """Return names of models whose checkpoint/directory exists and is not a LFS pointer."""
+    return [name for name, path in _DEFAULT_PATHS.items()
+            if path.exists() and not _is_lfs_pointer(path)]
 
 
 def missing_models() -> dict[str, str]:
